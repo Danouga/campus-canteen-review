@@ -13,11 +13,13 @@ npm run dev
 
 当前本机配置位于被 Git 忽略的 `.env.local`，服务地址默认为 `http://127.0.0.1:4174`。`npm run check` 检查 JavaScript 语法，`node tests/contribution-smoke.mjs` 检查共建审核、消息、内容归属、删除和菜品多图的数据流程。数据库连接失败时服务不会启动，避免误写入浏览器备用数据。
 
+需要使用已迁移的腾讯云 MySQL 时运行 `npm run dev:remote`，按提示输入远端密码。密码不会写入项目文件；该命令只在当前运行的服务进程中使用远端连接。`npm run dev` 仍使用 `.env.local` 配置的本机 MySQL。若之后需要再次从本机复制数据，可运行 `node scripts/migrate-mysql.mjs <主机> <端口> root canteen_guide_mvp`；脚本先显示两端摘要，目标已有数据时先在远端备份，再要求输入 `MIGRATE` 执行复制。
+
 如需补充可识别的演示内容，在服务启动且确认连接本机 MySQL 后运行 `node scripts/seed-demo.mjs`。脚本会在一个已有食堂下添加“【测试】清新小食”、两道测试菜品、三条演示评论和一篇测试帖子；重复运行不会添加同名内容。
 
 ## 当前数据模式
 
-- 已接通本机 MySQL 8.0。服务端自动创建 `canteen_guide_mvp` 数据库与 `app_state` 表，以一行 JSON 保存当前 MVP 的完整预览状态。`src/api-repository.js` 通过本机 HTTP API 调用服务端；浏览器不会读取数据库密码。服务端只监听 `127.0.0.1`，且静态文件路由不会提供 `.env.local`。
+- 已接通本机 MySQL 8.0，并已将本机预览数据迁移到腾讯云 MySQL。服务端自动创建 `canteen_guide_mvp` 数据库与 `app_state` 表，以一行 JSON 保存当前 MVP 的完整预览状态。`src/api-repository.js` 通过本机 HTTP API 调用服务端；浏览器不会读取数据库密码。服务端只监听 `127.0.0.1`，且静态文件路由不会提供 `.env.local`。
 - MySQL 配置只保存在被 `.gitignore` 忽略的 `.env.local`。未配置 `DB_MODE=mysql` 时自动使用浏览器 `localStorage`；两种模式的数据不会自动迁移。
 - 当前单行 JSON 存储适合本机原型验证，正式多用户版本需要拆分数据表、独立图片存储、事务与审核权限。右上角“用户信息”侧栏可切换“发布人、浏览人、管理员”三种演示身份，查看审核消息和自己的发布；它们不是真实登录，浏览器或 API 可以伪造管理员身份。屏蔽词也只有少量示例词。**不可直接公开部署。**
 - 为避免凭空造学校资料，两校区暂用“校区一/校区二”占位名。管理员可在管理预览页修改。食堂与店铺均从空白开始。
