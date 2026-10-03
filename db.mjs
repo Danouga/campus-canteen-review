@@ -6,7 +6,7 @@ const allowedActions = new Set([
   'submitContribution', 'reviewContribution', 'fixProvisional', 'revokeProvisional',
   'expireProvisional', 'saveCampus', 'saveCanteen', 'saveShop', 'removeEntry',
   'restoreEntry', 'saveDish', 'savePhoto', 'saveCanteenPhoto', 'removeCanteenPhoto', 'removeShopContent', 'addComment',
-  'submitPost', 'resetPreview'
+  'submitPost', 'deleteOwnContent', 'markReviewMessageRead', 'resetPreview'
 ]);
 
 class MemoryStorage {
@@ -37,7 +37,7 @@ export async function connectDatabase(config) {
       return JSON.parse(rows[0].payload);
     },
     async action(method, args) {
-      if (!allowedActions.has(method) || !Array.isArray(args) || args.length > 3) throw new Error('操作无效。');
+      if (!allowedActions.has(method) || !Array.isArray(args) || args.length > 4) throw new Error('操作无效。');
       const connection = await pool.getConnection();
       try {
         await connection.beginTransaction();

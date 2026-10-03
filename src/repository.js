@@ -15,6 +15,21 @@ const id = () => globalThis.crypto?.randomUUID?.() || `id-${Date.now()}-${Math.r
 const clone = (value) => structuredClone(value);
 const editableFields = { canteen: ['name', 'location', 'hours'], shop: ['name', 'location', 'category', 'lateHours'], dish: ['name', 'price', 'note'] };
 const fieldLabels = { name: '名称', location: '位置', hours: '营业时间', category: '分类', lateHours: '延时关门', price: '价格', note: '说明' };
+export const demoUsers = [
+  { id: 'demo-author', name: '发布人', role: 'member' },
+  { id: 'demo-viewer', name: '浏览人', role: 'member' },
+  { id: 'demo-admin', name: '管理员', role: 'admin' }
+];
+function requireActor(actorId) {
+  const actor = demoUsers.find((entry) => entry.id === actorId);
+  if (!actor) throw new Error('请选择演示身份。');
+  return actor;
+}
+function requireAdmin(actorId) {
+  const actor = requireActor(actorId);
+  if (actor.role !== 'admin') throw new Error('只有管理员可以审核。');
+  return actor;
+}
 
 function read(storage) {
   try {
@@ -51,7 +66,8 @@ export class LocalRepository {
     let title = type === 'photo'
       ? input.photoKind === 'storefront' ? '店铺门面' : data.shops.find((entry) => entry.id === input.shopId)?.dishes.find((dish) => dish.id === input.dishId)?.name || ''
       : type === 'canteen-photo' ? '食堂照片' : type === 'field-update' ? '资料修改' : assertText(input.title, '名称');
-    const author = assertText(input.author, '提交人昵称', 30);
+    const actor = requireActor(input.actorId);
+    const author = actor.name;
     const detail = String(input.detail || '').trim().slice(0, 600);
     if (input.photo) input.photo = assertPhoto(input.photo);
     if (!['canteen', 'shop', 'dish', 'hours', 'photo', 'shop-info', 'canteen-photo', 'field-update'].includes(type)) throw new Error('申请类型无效。');
@@ -87,16 +103,18 @@ export class LocalRepository {
       if (input.photoKind === 'dish' && !shop.dishes.some((dish) => dish.id === input.dishId && dish.status !== 'archived')) throw new Error('请选择要展示的菜品。');
       if (!input.photo) throw new Error('请选择图片。');
     }
-    data.contributions.unshift({ id: id(), ...input, title, detail, author, status: 'pending', submittedAt: new Date().toISOString(), reviewedAt: null, reviewNote: '', expiresAt: null });
+    data.contributions.unshift({ id: id(), ...input, title, detail, author, ownerId: actor.id, status: 'pending', submittedAt: new Date().toISOString(), reviewedAt: null, reviewNote: '', notificationReadAt: null, expiresAt: null });
     write(data, this.storage);
   }
 
-  async reviewContribution(contributionId, decision, note = '') {
+  async reviewContribution(contributionId, decision, note = '', actorId) {
+    requireAdmin(actorId);
     const data = read(this.storage);
     const item = data.contributions.find((entry) => entry.id === contributionId);
     if (!item || item.status !== 'pending') throw new Error('申请不存在或已处理。');
     if (!['provisional', 'fixed', 'rejected'].includes(decision)) throw new Error('审核决定无效。');
     item.reviewedAt = new Date().toISOString();
+    item.notificationReadAt = null;
     item.reviewNote = String(note).trim().slice(0, 200);
     item.status = decision;
     if (decision === 'provisional') {
@@ -107,7 +125,8 @@ export class LocalRepository {
     write(data, this.storage);
   }
 
-  async fixProvisional(contributionId) {
+  async fixProvisional(contributionId, actorId) {
+    requireAdmin(actorId);
     const data = read(this.storage);
     const item = data.contributions.find((entry) => entry.id === contributionId);
     if (!item || item.status !== 'provisional') throw new Error('暂示申请不存在。');
@@ -115,15 +134,18 @@ export class LocalRepository {
     applyContribution(data, item);
     item.status = 'fixed';
     item.reviewedAt = new Date().toISOString();
+    item.notificationReadAt = null;
     write(data, this.storage);
   }
 
-  async revokeProvisional(contributionId) {
+  async revokeProvisional(contributionId, actorId) {
+    requireAdmin(actorId);
     const data = read(this.storage);
     const item = data.contributions.find((entry) => entry.id === contributionId);
     if (!item || item.status !== 'provisional') throw new Error('暂示申请不存在。');
     item.status = 'rejected'; item.reviewedAt = new Date().toISOString();
     item.reviewNote = '管理员提前撤销暂示';
+    item.notificationReadAt = null;
     write(data, this.storage);
   }
 
@@ -132,11 +154,19 @@ export class LocalRepository {
     let changed = false;
     for (const item of data.contributions) {
       if (item.status === 'provisional' && new Date(item.expiresAt).getTime() <= Date.now()) {
-        item.status = 'expired'; changed = true;
+        item.status = 'expired'; item.notificationReadAt = null; changed = true;
       }
     }
     if (changed) write(data, this.storage);
     return changed;
+  }
+
+  async markReviewMessageRead(contributionId, actorId) {
+    const data = read(this.storage);
+    const item = data.contributions.find((entry) => entry.id === contributionId && entry.ownerId === actorId && entry.status !== 'pending');
+    if (!item) throw new Error('审核消息不存在。');
+    item.notificationReadAt = new Date().toISOString();
+    write(data, this.storage);
   }
 
   async saveCampus(campusId, name) {
@@ -245,21 +275,43 @@ export class LocalRepository {
     entry.status = 'archived'; shop.updatedAt = new Date().toISOString(); write(data, this.storage);
   }
 
-  async addComment(shopId, author, body) {
+  async addComment(targetKind, targetId, actorId, body) {
     const data = read(this.storage);
-    if (!data.shops.some((shop) => shop.id === shopId && shop.status === 'active')) throw new Error('店铺不存在。');
+    const actor = requireActor(actorId);
+    const shop = targetKind === 'shop' ? data.shops.find((entry) => entry.id === targetId && entry.status === 'active')
+      : targetKind === 'dish' ? data.shops.find((entry) => entry.status === 'active' && entry.dishes.some((dish) => dish.id === targetId && dish.status !== 'archived'))
+      : targetKind === 'post' ? data.shops.find((entry) => entry.status === 'active' && data.posts.some((post) => post.id === targetId && post.shopId === entry.id && post.status !== 'archived')) : null;
+    if (!shop) throw new Error('评论目标不存在。');
     const screening = screenComment(body);
     if (!screening.allowed) throw new Error(screening.reason);
-    data.comments.unshift({ id: id(), shopId, author: assertText(author, '昵称', 30), body: assertText(body, '评论', 500), createdAt: new Date().toISOString() });
+    data.comments.unshift({ id: id(), targetKind, targetId, shopId: shop.id, ownerId: actor.id, author: actor.name, body: assertText(body, '评论', 500), status: 'active', createdAt: new Date().toISOString() });
     write(data, this.storage);
   }
 
   async submitPost(input) {
     const data = read(this.storage);
+    const actor = requireActor(input.actorId);
     if (!data.shops.some((shop) => shop.id === input.shopId && shop.status === 'active')) throw new Error('请选择已收录的店铺。');
     const screening = screenComment(`${input.title} ${input.body}`);
     if (!screening.allowed) throw new Error(screening.reason);
-    data.posts.unshift({ id: id(), shopId: input.shopId, author: assertText(input.author, '昵称', 30), title: assertText(input.title, '帖子标题', 80), body: assertText(input.body, '帖子内容', 5000), contentHtml: String(input.contentHtml || '').slice(0, 4_000_000), photo: input.photo ? assertPhoto(input.photo) : '', createdAt: new Date().toISOString() });
+    data.posts.unshift({ id: id(), shopId: input.shopId, ownerId: actor.id, author: actor.name, title: assertText(input.title, '帖子标题', 80), body: assertText(input.body, '帖子内容', 5000), contentHtml: String(input.contentHtml || '').slice(0, 4_000_000), photo: input.photo ? assertPhoto(input.photo) : '', status: 'active', createdAt: new Date().toISOString() });
+    write(data, this.storage);
+  }
+
+  async deleteOwnContent(kind, entryId, actorId) {
+    requireActor(actorId);
+    const data = read(this.storage);
+    let entry;
+    if (kind === 'comment') entry = data.comments.find((item) => item.id === entryId);
+    if (kind === 'post') entry = data.posts.find((item) => item.id === entryId);
+    if (kind === 'photo') {
+      for (const canteen of data.canteens) entry ||= canteen.photos?.find((item) => item.id === entryId);
+      for (const shop of data.shops) entry ||= shop.photos?.find((item) => item.id === entryId);
+    }
+    if (!entry || entry.status === 'archived') throw new Error('内容不存在或已删除。');
+    if (entry.ownerId !== actorId) throw new Error('只能删除自己发布的内容。');
+    entry.status = 'archived';
+    entry.deletedAt = new Date().toISOString();
     write(data, this.storage);
   }
 
@@ -276,7 +328,7 @@ function applyContribution(data, item) {
     const canteen = data.canteens.find((entry) => entry.id === item.canteenId && entry.status === 'active');
     if (!canteen) throw new Error('对应食堂不存在。');
     canteen.photos ||= [];
-    canteen.photos.push({ id: id(), url: item.photo, caption: '食堂照片', status: 'active' });
+    canteen.photos.push({ id: id(), url: item.photo, caption: '食堂照片', ownerId: item.ownerId || null, status: 'active' });
     canteen.updatedAt = now;
     return;
   }
@@ -303,12 +355,16 @@ function applyContribution(data, item) {
   }
   const shop = data.shops.find((entry) => entry.id === item.shopId && entry.status === 'active');
   if (!shop) throw new Error('店铺不存在。');
-  if (item.type === 'dish') shop.dishes.push({ id: id(), name: item.title, price: item.price || '', note: item.detail, photo: item.photo || '', status: 'active' });
+  if (item.type === 'dish') {
+    const dishId = id();
+    shop.dishes.push({ id: dishId, name: item.title, price: item.price || '', note: item.detail, photo: '', status: 'active' });
+    if (item.photo) shop.photos.push({ id: id(), photoKind: 'dish', dishId, url: item.photo, caption: item.title, ownerId: item.ownerId || null, status: 'active' });
+  }
   if (item.type === 'photo') {
     const photoKind = item.photoKind || 'dish';
     const dish = shop.dishes.find((entry) => entry.id === item.dishId && entry.status !== 'archived');
     if (photoKind === 'dish' && !dish) throw new Error('对应菜品不存在。');
-    shop.photos.push({ id: id(), photoKind, dishId: photoKind === 'dish' ? dish.id : null, url: item.photo || '', caption: photoKind === 'dish' ? dish.name : '店铺门面', status: 'active' });
+    shop.photos.push({ id: id(), photoKind, dishId: photoKind === 'dish' ? dish.id : null, url: item.photo || '', caption: photoKind === 'dish' ? dish.name : '店铺门面', ownerId: item.ownerId || null, status: 'active' });
   }
   if (item.type === 'shop-info') {
     if (item.field === 'lateHours') shop.lateHours = item.detail;

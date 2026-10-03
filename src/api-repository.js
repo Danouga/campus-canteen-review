@@ -25,9 +25,10 @@ export class ApiRepository {
   }
 
   submitContribution(input) { return this.invoke('submitContribution', input); }
-  reviewContribution(id, decision, note) { return this.invoke('reviewContribution', id, decision, note); }
-  fixProvisional(id) { return this.invoke('fixProvisional', id); }
-  revokeProvisional(id) { return this.invoke('revokeProvisional', id); }
+  reviewContribution(id, decision, note, actorId) { return this.invoke('reviewContribution', id, decision, note, actorId); }
+  fixProvisional(id, actorId) { return this.invoke('fixProvisional', id, actorId); }
+  revokeProvisional(id, actorId) { return this.invoke('revokeProvisional', id, actorId); }
+  markReviewMessageRead(id, actorId) { return this.invoke('markReviewMessageRead', id, actorId); }
   expireProvisional() { return this.invoke('expireProvisional'); }
   saveCampus(id, name) { return this.invoke('saveCampus', id, name); }
   saveCanteen(input) { return this.invoke('saveCanteen', input); }
@@ -39,7 +40,8 @@ export class ApiRepository {
   saveCanteenPhoto(input) { return this.invoke('saveCanteenPhoto', input); }
   removeCanteenPhoto(canteenId, photoId) { return this.invoke('removeCanteenPhoto', canteenId, photoId); }
   removeShopContent(kind, shopId, id) { return this.invoke('removeShopContent', kind, shopId, id); }
-  addComment(shopId, author, body) { return this.invoke('addComment', shopId, author, body); }
+  addComment(targetKind, targetId, actorId, body) { return this.invoke('addComment', targetKind, targetId, actorId, body); }
   submitPost(input) { return this.invoke('submitPost', input); }
+  deleteOwnContent(kind, id, actorId) { return this.invoke('deleteOwnContent', kind, id, actorId); }
   resetPreview() { return this.invoke('resetPreview'); }
 }
