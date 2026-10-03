@@ -32,7 +32,14 @@ state = await repo.snapshot();
 assert.deepEqual(state.contributions[0].changes.tags, ['饮品', '早餐']);
 await repo.reviewContribution(state.contributions[0].id, 'fixed', '', 'demo-admin');
 state = await repo.snapshot();
-assert.deepEqual(state.shops[0].tags, ['饮品', '早餐']);
+assert.deepEqual(state.shops[0].tags, ['面食', '夜宵', '饮品', '早餐']);
+await assert.rejects(repo.submitContribution({ ...base, type: 'field-update', targetKind: 'shop', changes: { tags: '面食' } }), /没有可新增/);
+await repo.submitContribution({ ...base, type: 'field-update', targetKind: 'shop', changes: { removeTags: '夜宵' } });
+state = await repo.snapshot();
+assert.deepEqual(state.contributions[0].changes.removeTags, ['夜宵']);
+await repo.reviewContribution(state.contributions[0].id, 'fixed', '', 'demo-admin');
+state = await repo.snapshot();
+assert.deepEqual(state.shops[0].tags, ['面食', '饮品', '早餐']);
 
 await repo.submitContribution({ ...base, type: 'dish', title: '牛肉面', price: '13.5', detail: '加辣' });
 state = await repo.snapshot();
