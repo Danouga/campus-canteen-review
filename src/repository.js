@@ -13,7 +13,7 @@ export const initialState = () => ({
 
 const id = () => globalThis.crypto?.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const clone = (value) => structuredClone(value);
-const editableFields = { canteen: ['name', 'location', 'hours'], shop: ['name', 'location', 'tags', 'removeTags', 'category', 'lateHours'], dish: ['name', 'price', 'note'] };
+const editableFields = { canteen: ['name', 'location', 'hours'], shop: ['name', 'location', 'tags', 'category', 'lateHours'], dish: ['name', 'price', 'note'] };
 const fieldLabels = { name: '名称', location: '位置', hours: '营业时间', tags: '新增标签', removeTags: '移除标签', category: '分类', lateHours: '延时关门', price: '价格', note: '说明' };
 export function normalizeTags(value) {
   const parts = Array.isArray(value) ? value : String(value || '').split(/[,，、\n]+/);
@@ -99,10 +99,10 @@ export class LocalRepository {
       if (!Object.keys(changes).length || Object.keys(changes).some((field) => !fields.includes(field))) throw new Error('请选择要修改的条目。');
       const currentTags = input.targetKind === 'shop' ? normalizeTags(target.tags ?? target.category) : [];
       input.changes = Object.fromEntries(Object.entries(changes).map(([field, value]) => {
-        if (field === 'tags' || field === 'removeTags') {
-          const requested = normalizeTags(assertText(value, fieldLabels[field], 120));
-          const selected = requested.filter((tag) => field === 'tags' ? !currentTags.includes(tag) : currentTags.includes(tag));
-          if (!selected.length) throw new Error(field === 'tags' ? '没有可新增的标签。' : '没有可移除的标签。');
+        if (field === 'tags') {
+          const requested = normalizeTags(assertText(value, '新增标签', 120));
+          const selected = requested.filter((tag) => !currentTags.includes(tag));
+          if (!selected.length) throw new Error('没有可新增的标签。');
           if (field === 'tags' && currentTags.length + selected.length > 8) throw new Error('每家店铺最多保留 8 个标签。');
           return [field, selected];
         }
