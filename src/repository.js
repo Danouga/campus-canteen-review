@@ -13,8 +13,12 @@ export const initialState = () => ({
 
 const id = () => globalThis.crypto?.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const clone = (value) => structuredClone(value);
-const editableFields = { canteen: ['name', 'location', 'hours'], shop: ['name', 'location', 'category', 'lateHours'], dish: ['name', 'price', 'note'] };
-const fieldLabels = { name: '名称', location: '位置', hours: '营业时间', category: '分类', lateHours: '延时关门', price: '价格', note: '说明' };
+const editableFields = { canteen: ['name', 'location', 'hours'], shop: ['name', 'location', 'tags', 'category', 'lateHours'], dish: ['name', 'price', 'note'] };
+const fieldLabels = { name: '名称', location: '位置', hours: '营业时间', tags: '标签', category: '分类', lateHours: '延时关门', price: '价格', note: '说明' };
+export function normalizeTags(value) {
+  const parts = Array.isArray(value) ? value : String(value || '').split(/[,，、\n]+/);
+  return [...new Set(parts.map((tag) => String(tag).trim()).filter(Boolean))].slice(0, 8).map((tag) => tag.slice(0, 20));
+}
 export const demoUsers = [
   { id: 'demo-author', name: '发布人', role: 'member' },
   { id: 'demo-viewer', name: '浏览人', role: 'member' },
@@ -93,7 +97,7 @@ export class LocalRepository {
       if (input.targetKind !== 'canteen' && !shop) throw new Error('请选择店铺。');
       const changes = input.changes || {};
       if (!Object.keys(changes).length || Object.keys(changes).some((field) => !fields.includes(field))) throw new Error('请选择要修改的条目。');
-      input.changes = Object.fromEntries(Object.entries(changes).map(([field, value]) => [field, assertText(value, fieldLabels[field], field === 'note' ? 200 : 120)]));
+      input.changes = Object.fromEntries(Object.entries(changes).map(([field, value]) => [field, field === 'tags' ? normalizeTags(assertText(value, '标签', 120)) : assertText(value, fieldLabels[field], field === 'note' ? 200 : 120)]));
       title = `${target.name || (input.targetKind === 'canteen' ? '食堂' : '店铺')} · ${Object.keys(input.changes).map((field) => fieldLabels[field]).join('、')}修改`;
     }
     if (type === 'photo') {
@@ -193,7 +197,7 @@ export class LocalRepository {
     const name = assertText(input.name, '店铺名称', 60);
     if (!data.canteens.some((entry) => entry.id === input.canteenId && entry.status === 'active')) throw new Error('请选择可用食堂。');
     const existing = input.id && data.shops.find((entry) => entry.id === input.id);
-    const value = { id: existing?.id || id(), canteenId: input.canteenId, name, category: String(input.category || '').trim().slice(0, 40), location: String(input.location || '').trim().slice(0, 120), lateHours: String(input.lateHours || '').trim().slice(0, 120), dishes: existing?.dishes || [], photos: existing?.photos || [], status: 'active', updatedAt: new Date().toISOString() };
+    const value = { id: existing?.id || id(), canteenId: input.canteenId, name, tags: normalizeTags(input.tags ?? input.category ?? existing?.tags ?? existing?.category), location: String(input.location || '').trim().slice(0, 120), lateHours: String(input.lateHours || '').trim().slice(0, 120), dishes: existing?.dishes || [], photos: existing?.photos || [], status: 'active', updatedAt: new Date().toISOString() };
     if (existing) Object.assign(existing, value); else data.shops.push(value);
     write(data, this.storage);
   }
@@ -338,12 +342,13 @@ function applyContribution(data, item) {
       : data.shops.find((entry) => entry.id === item.shopId && entry.status === 'active')?.dishes.find((entry) => entry.id === item.dishId && entry.status !== 'archived');
     if (!target) throw new Error('对应资料不存在。');
     Object.assign(target, item.changes);
+    if (item.targetKind === 'shop' && item.changes.category !== undefined) target.tags = normalizeTags(item.changes.category);
     target.updatedAt = now;
     return;
   }
   if (item.type === 'shop') {
     if (!data.canteens.some((entry) => entry.id === item.canteenId && entry.status === 'active')) throw new Error('对应食堂不存在，请先补充食堂。');
-    data.shops.push({ id: id(), canteenId: item.canteenId, name: item.title, category: item.category || '', location: item.detail, lateHours: '', dishes: [], photos: [], status: 'active', updatedAt: now });
+    data.shops.push({ id: id(), canteenId: item.canteenId, name: item.title, tags: normalizeTags(item.tags ?? item.category), location: item.detail, lateHours: '', dishes: [], photos: [], status: 'active', updatedAt: now });
     return;
   }
   if (item.type === 'hours') {
@@ -368,7 +373,7 @@ function applyContribution(data, item) {
   }
   if (item.type === 'shop-info') {
     if (item.field === 'lateHours') shop.lateHours = item.detail;
-    else if (item.field === 'category') shop.category = item.detail;
+    else if (item.field === 'category') shop.tags = normalizeTags(item.detail);
     else shop.location = item.detail;
   }
   shop.updatedAt = now;

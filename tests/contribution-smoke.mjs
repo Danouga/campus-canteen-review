@@ -11,13 +11,35 @@ const repo = new LocalRepository(storage);
 await repo.saveCanteen({ campusId: 'campus-a', name: '测试食堂' });
 let state = await repo.snapshot();
 const canteenId = state.canteens[0].id;
-await repo.saveShop({ canteenId, name: '测试店铺' });
+await repo.saveShop({ canteenId, name: '测试店铺', tags: '面食、夜宵、面食' });
 state = await repo.snapshot();
 const shopId = state.shops[0].id;
+assert.deepEqual(state.shops[0].tags, ['面食', '夜宵']);
 await repo.saveDish({ shopId, name: '番茄口味' });
 state = await repo.snapshot();
 const dishId = state.shops[0].dishes[0].id;
 const base = { campusId: 'campus-a', canteenId, shopId, actorId: 'demo-author' };
+
+await repo.submitContribution({ campusId: 'campus-a', canteenId, actorId: 'demo-author', type: 'shop', title: '测试饮品店', tags: '饮品、夜宵' });
+state = await repo.snapshot();
+assert.equal(state.contributions[0].tags, '饮品、夜宵');
+await repo.reviewContribution(state.contributions[0].id, 'fixed', '', 'demo-admin');
+state = await repo.snapshot();
+assert.deepEqual(state.shops.find((shop) => shop.name === '测试饮品店').tags, ['饮品', '夜宵']);
+
+await repo.submitContribution({ ...base, type: 'field-update', targetKind: 'shop', changes: { tags: '饮品，早餐' } });
+state = await repo.snapshot();
+assert.deepEqual(state.contributions[0].changes.tags, ['饮品', '早餐']);
+await repo.reviewContribution(state.contributions[0].id, 'fixed', '', 'demo-admin');
+state = await repo.snapshot();
+assert.deepEqual(state.shops[0].tags, ['饮品', '早餐']);
+
+await repo.submitContribution({ ...base, type: 'dish', title: '牛肉面', price: '13.5', detail: '加辣' });
+state = await repo.snapshot();
+assert.equal(state.contributions[0].price, '13.5');
+await repo.reviewContribution(state.contributions[0].id, 'fixed', '', 'demo-admin');
+state = await repo.snapshot();
+assert.equal(state.shops[0].dishes.find((dish) => dish.name === '牛肉面').price, '13.5');
 
 await repo.submitContribution({ ...base, type: 'field-update', targetKind: 'canteen', changes: { hours: '每天 07:00–20:00' } });
 state = await repo.snapshot();
