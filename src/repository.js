@@ -8,7 +8,7 @@ export const initialState = () => ({
     { id: 'campus-a', name: '校区一', note: '名称待设置' },
     { id: 'campus-b', name: '校区二', note: '名称待设置' }
   ],
-  canteens: [], shops: [], contributions: [], comments: [], posts: [], reactions: []
+  canteens: [], shops: [], contributions: [], comments: [], posts: [], reactions: [], recommendationVotes: [], recommendationRewards: []
 });
 
 const id = () => globalThis.crypto?.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -37,6 +37,35 @@ function requireAdmin(actorId) {
 
 const MODERATION_OPPOSES = 5;
 const PROVISIONAL_DECISION_VOTES = 2;
+const REWARD_THRESHOLDS = { comment: 5, post: 10 };
+export function recommendationPeriod(now = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now).map((part) => [part.type, part.value]));
+  const day = `${parts.year}-${parts.month}-${parts.day}`;
+  const monday = new Date(`${day}T00:00:00Z`);
+  monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
+  return { day, week: monday.toISOString().slice(0, 10) };
+}
+function grantRecommendationReward(data, kind, item) {
+  if (!item?.ownerId || !demoUsers.some((user) => user.id === item.ownerId)) return;
+  const key = `${kind}:${item.id}`;
+  if (!data.recommendationRewards.some((reward) => reward.key === key)) data.recommendationRewards.push({ key, ownerId: item.ownerId, sourceKind: kind, sourceId: item.id, createdAt: new Date().toISOString() });
+}
+function syncRecommendationRewards(data) {
+  data.recommendationVotes ||= [];
+  data.recommendationRewards ||= [];
+  for (const item of data.contributions || []) if (item.status === 'fixed') grantRecommendationReward(data, 'contribution', item);
+  for (const kind of ['comment', 'post']) for (const item of data[`${kind}s`] || []) {
+    if (reactionTotals(data, kind, item.id).agree >= REWARD_THRESHOLDS[kind]) grantRecommendationReward(data, kind, item);
+  }
+}
+export function recommendationSummary(data, actorId, now = new Date()) {
+  const { day, week } = recommendationPeriod(now);
+  const votes = data.recommendationVotes || [];
+  const mine = votes.filter((vote) => vote.actorId === actorId);
+  const baseRemaining = mine.some((vote) => vote.day === day && vote.source === 'base') ? 0 : 1;
+  const bonus = Math.max(0, (data.recommendationRewards || []).filter((reward) => reward.ownerId === actorId).length - mine.filter((vote) => vote.source === 'bonus').length);
+  return { day, week, baseRemaining, bonus, available: baseRemaining + bonus, votesToday: mine.filter((vote) => vote.day === day), weeklyVotes: votes.filter((vote) => vote.week === week) };
+}
 function tagId(shopId, name) { return `${shopId}:tag:${encodeURIComponent(name)}`; }
 function syncTagRecords(shop, ownerId = null) {
   const desired = normalizeTags(shop.tags ?? shop.category);
@@ -55,6 +84,7 @@ function read(storage) {
     if (value && Array.isArray(value.campuses) && Array.isArray(value.canteens)) {
       value.posts ||= [];
       value.reactions ||= [];
+      syncRecommendationRewards(value);
       for (const shop of value.shops || []) {
         syncTagRecords(shop);
         for (const tag of shop.tagRecords) if (!tag.ownerId) {
@@ -167,6 +197,7 @@ export class LocalRepository {
       item.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     } else if (decision === 'fixed') {
       applyContribution(data, item);
+      grantRecommendationReward(data, 'contribution', item);
     }
     write(data, this.storage);
   }
@@ -179,6 +210,7 @@ export class LocalRepository {
     if (new Date(item.expiresAt).getTime() <= Date.now()) throw new Error('暂示已到期，请刷新页面。');
     applyContribution(data, item);
     item.status = 'fixed';
+    grantRecommendationReward(data, 'contribution', item);
     item.reviewedAt = new Date().toISOString();
     item.notificationReadAt = null;
     write(data, this.storage);
@@ -370,6 +402,7 @@ export class LocalRepository {
         item.status = 'rejected'; item.reviewNote = '社区反对达到暂示撤销门槛'; item.reviewedAt = new Date().toISOString(); item.notificationReadAt = null;
       } else if (totals.agree >= PROVISIONAL_DECISION_VOTES && totals.agree > totals.disagree) {
         applyContribution(data, item); item.status = 'fixed'; item.reviewNote = '社区赞同达到固定门槛'; item.reviewedAt = new Date().toISOString(); item.notificationReadAt = null;
+        grantRecommendationReward(data, 'contribution', item);
       }
     } else if (targetKind === 'contribution' && item.status === 'fixed' && totals.disagree >= MODERATION_OPPOSES && totals.disagree >= 2 * totals.agree) {
       item.status = 'contested'; item.reviewNote = '已固定资料收到集中反对，等待管理员复核'; item.notificationReadAt = null;
@@ -377,7 +410,22 @@ export class LocalRepository {
       item.status = 'hidden'; item.moderationReason = '反对数达到自动隐藏门槛'; item.moderatedAt = new Date().toISOString();
       if (targetKind === 'tag') { const shop = data.shops.find((entry) => entry.tagRecords?.some((tag) => tag.id === targetId)); if (shop) shop.tags = shop.tagRecords.filter((tag) => tag.status === 'active').map((tag) => tag.name); }
     }
+    if (REWARD_THRESHOLDS[targetKind] && totals.agree >= REWARD_THRESHOLDS[targetKind]) grantRecommendationReward(data, targetKind, item);
     write(data, this.storage);
+  }
+
+  async castRecommendationVote(shopId, actorId) {
+    requireActor(actorId);
+    const data = read(this.storage);
+    const shop = data.shops.find((entry) => entry.id === shopId && entry.status === 'active');
+    if (!shop || shop.availability === 'unlisted') throw new Error('该店铺暂时不能接收推荐票。');
+    const summary = recommendationSummary(data, actorId);
+    if (summary.votesToday.filter((vote) => vote.shopId === shopId).length >= 3) throw new Error('同一家店铺每天最多投 3 张推荐票。');
+    if (!summary.available) throw new Error('今天的基础票已使用，暂无额外推荐票。');
+    const source = summary.baseRemaining ? 'base' : 'bonus';
+    data.recommendationVotes.push({ id: id(), shopId, actorId, source, day: summary.day, week: summary.week, createdAt: new Date().toISOString() });
+    write(data, this.storage);
+    return { source };
   }
 
   async moderateContent(targetKind, targetId, decision, actorId) {

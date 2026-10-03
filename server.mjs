@@ -31,7 +31,7 @@ async function bodyJson(request) {
   return JSON.parse(raw);
 }
 
-createServer(async (request, response) => {
+const server = createServer(async (request, response) => {
   let pathname;
   try {
     pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
@@ -61,7 +61,7 @@ createServer(async (request, response) => {
     return;
   }
   if (request.method !== 'GET') { response.writeHead(405).end('Method Not Allowed'); return; }
-  const pageRoute = /^\/(?:canteens\/[^/]+|shops\/[^/]+(?:\/dishes\/[^/]+|\/posts)?|posts(?:\/[^/]+)?|directory(?:\/[^/]+)?|contribute|future|rules|admin)$/.test(pathname);
+  const pageRoute = /^\/(?:canteens\/[^/]+|shops\/[^/]+(?:\/dishes\/[^/]+|\/posts)?|posts(?:\/[^/]+)?|directory(?:\/[^/]+)?|ranking|contribute|future|rules|admin)$/.test(pathname);
   if (pathname !== '/' && !pageRoute && !/^\/(?:index\.html|src\/[a-z0-9-]+\.(?:js|css))$/.test(pathname)) { response.writeHead(404).end('Not Found'); return; }
   const file = resolve(root, `.${pathname === '/' || pageRoute ? '/index.html' : pathname}`);
   if (file !== root && !file.startsWith(root + sep)) {
@@ -75,6 +75,14 @@ createServer(async (request, response) => {
   } catch {
     response.writeHead(404).end('Not Found');
   }
-}).listen(port, '127.0.0.1', () => {
+});
+server.on('error', async (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`端口 ${port} 已被占用。请先停止原服务，或设置其他 PORT 后重试。`);
+  } else console.error(error);
+  process.exitCode = 1;
+  await database?.close();
+});
+server.listen(port, '127.0.0.1', () => {
   console.log(`MVP preview: http://127.0.0.1:${port}`);
 });
