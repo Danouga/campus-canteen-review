@@ -22,4 +22,5 @@ export class ApiRepository {
   async savePhoto(_input) { throw new Error('服务端数据接口尚未接入。'); }
   async removeShopContent(_kind, _shopId, _entryId) { throw new Error('服务端数据接口尚未接入。'); }
   async addComment(_shopId, _author, _body) { throw new Error('服务端数据接口尚未接入。'); }
+  async submitPost(_input) { throw new Error('服务端数据接口尚未接入。'); }
 }

@@ -42,8 +42,8 @@ function action(label, command, extra = '', style = '') { return `<button type="
 function header() {
   return `<header class="site-header"><div class="header-inner">
     <button class="brand" data-view="home" aria-label="返回首页"><span class="brand-mark">${icon('bowl', 23)}</span><span>食间<span class="brand-dot">.</span><small>校园食堂指南</small></span></button>
-    <nav class="main-nav" aria-label="主导航">${navButton('home', '发现食堂')}${navButton('contribute', '一起共建')}${navButton('future', '未来计划')}${navButton('admin', `管理预览${pendingCount() ? `<span class="nav-count">${pendingCount()}</span>` : ''}`)}</nav>
-    <button class="header-cta" data-action="open-contribution" data-type="canteen">${icon('plus', 17)} 提交新发现</button>
+    <nav class="main-nav" aria-label="主导航">${navButton('home', '首页')}${navButton('directory', '食堂展示')}${navButton('posts', '美食贴')}${navButton('contribute', '一起共建')}${navButton('future', '未来计划')}${navButton('admin', `管理预览${pendingCount() ? `<span class="nav-count">${pendingCount()}</span>` : ''}`)}</nav>
+    <button class="header-cta" data-action="open-post">${icon('plus', 17)} 发美食贴</button>
   </div></header>`;
 }
 
@@ -56,16 +56,21 @@ function campusTabs() {
 }
 
 function home() {
-  const filtered = canteensHere().filter((canteen) => `${canteen.name} ${canteen.location}`.toLowerCase().includes(state.query.toLowerCase()));
-  const proposedCanteens = state.data.contributions.filter((item) => item.status === 'provisional' && item.type === 'canteen' && item.campusId === state.campusId);
   const totalShops = activeShops().length;
   return `<main>
-    <section class="hero wrap"><div class="hero-copy"><span class="eyebrow"><span class="eyebrow-line"></span> A LITTLE GUIDE TO CAMPUS FOOD</span><h1>好味道，<br><em>一起慢慢发现。</em></h1><p>从两校区的食堂开始，记录每一家值得认识的店。资料可以由你补充，也会经过管理员确认。</p><div class="hero-actions"><button class="button primary" data-action="open-contribution" data-type="canteen">${icon('plus', 19)} 添加新发现</button><button class="button subtle" data-view="contribute">了解共建方式 ${icon('arrow', 18)}</button></div><div class="hero-metrics"><div><strong>02</strong><span>个校区</span></div><i></i><div><strong>${String(activeCanteens().length).padStart(2, '0')}</strong><span>个已收录食堂</span></div><i></i><div><strong>${String(totalShops).padStart(2, '0')}</strong><span>家已收录店铺</span></div></div></div><div class="hero-art" aria-hidden="true"><span class="art-ring ring-one"></span><span class="art-ring ring-two"></span><span class="art-orbit orbit-one"></span><span class="art-orbit orbit-two"></span><div class="plate"><div class="plate-inner"><span class="rice-grain grain-1"></span><span class="rice-grain grain-2"></span><span class="rice-grain grain-3"></span><span class="rice-grain grain-4"></span><span class="rice-grain grain-5"></span><span class="leaf-piece leaf-a"></span><span class="leaf-piece leaf-b"></span><span class="leaf-piece leaf-c"></span><span class="egg"></span><span class="carrot carrot-a"></span><span class="carrot carrot-b"></span><span class="carrot carrot-c"></span></div></div><div class="art-note"><span class="note-icon">${icon('spark', 18)}</span><span>下一家好店<br><b>也许由你发现</b></span></div></div></section>
-    <section class="directory wrap" id="directory"><div class="section-top"><div><span class="section-kicker">EXPLORE THE CANTEENS</span><h2>从哪一间食堂开始？</h2><p>选择校区，看看已经收录的食堂；空白的地方，欢迎你来补上。</p></div><span class="section-deco">${icon('leaf', 26)}</span></div>${campusTabs()}<div class="directory-toolbar"><div class="search-box">${icon('search', 19)}<input id="search" aria-label="搜索食堂" placeholder="搜索食堂名称或位置" value="${escapeHtml(state.query)}" /></div><span class="toolbar-tip">${icon('shield', 16)} 共建信息先审核，再公开展示</span></div>
-    <div class="canteen-grid">${filtered.length ? filtered.map(canteenCard).join('') : emptyCanteen()}</div>${proposedCanteens.length ? `<div class="home-proposals">${provisionalPanel(proposedCanteens)}</div>` : ''}</section>
-    <section class="steps-section"><div class="wrap steps-inner"><div class="steps-intro"><span class="section-kicker">BUILD IT TOGETHER</span><h2>你的一次补充，<br>让下一餐更容易。</h2><p>不必一次写得很完整。店名、位置、菜单或者营业时间，任何一条真实信息都很有帮助。</p>${action(`看看如何共建 ${icon('arrow', 17)}`, 'go-contribute')}</div><div class="steps-list"><div class="step"><span>01</span><div><b>发现空白</b><p>在食堂或店铺页面点击加号。</p></div></div><div class="step"><span>02</span><div><b>提交信息</b><p>填写你知道的部分，留下来源说明。</p></div></div><div class="step"><span>03</span><div><b>管理员确认</b><p>审核后暂时展示，或直接收录。</p></div></div></div></div></section>
+    <section class="hero wrap"><div class="hero-copy"><span class="eyebrow"><span class="eyebrow-line"></span> A LITTLE GUIDE TO CAMPUS FOOD</span><h1>好味道，<br><em>一起慢慢发现。</em></h1><p>从两校区的食堂开始，记录每一家值得认识的店。资料可以由你补充，也会经过管理员确认。</p><div class="hero-actions"><button class="button primary" data-view="directory">${icon('bowl', 19)} 浏览食堂</button><button class="button subtle" data-action="scroll-how">了解共建方式 ${icon('arrow', 18)}</button></div><div class="hero-metrics"><div><strong>02</strong><span>个校区</span></div><i></i><div><strong>${String(activeCanteens().length).padStart(2, '0')}</strong><span>个已收录食堂</span></div><i></i><div><strong>${String(totalShops).padStart(2, '0')}</strong><span>家已收录店铺</span></div></div></div><div class="hero-art" aria-hidden="true"><span class="art-ring ring-one"></span><span class="art-ring ring-two"></span><span class="art-orbit orbit-one"></span><span class="art-orbit orbit-two"></span><div class="plate"><div class="plate-inner"><span class="rice-grain grain-1"></span><span class="rice-grain grain-2"></span><span class="rice-grain grain-3"></span><span class="rice-grain grain-4"></span><span class="rice-grain grain-5"></span><span class="leaf-piece leaf-a"></span><span class="leaf-piece leaf-b"></span><span class="leaf-piece leaf-c"></span><span class="egg"></span><span class="carrot carrot-a"></span><span class="carrot carrot-b"></span><span class="carrot carrot-c"></span></div></div><div class="art-note"><span class="note-icon">${icon('spark', 18)}</span><span>下一家好店<br><b>也许由你发现</b></span></div></div></section>
+    <section class="directory-teaser wrap"><div><span class="section-kicker">EXPLORE THE CANTEENS</span><h2>两校区食堂，单独逛一逛。</h2><p>按校区浏览已收录食堂，也可以为还空着的位置申请补充。</p></div><button class="button outline" data-view="directory">进入食堂展示 ${icon('arrow', 18)}</button></section>
+    <section class="steps-section" id="how-it-works"><div class="wrap steps-inner"><div class="steps-intro"><span class="section-kicker">BUILD IT TOGETHER</span><h2>你的一次补充，<br>让下一餐更容易。</h2><p>不必一次写得很完整。店名、位置、菜单或者营业时间，任何一条真实信息都很有帮助。</p>${action(`一起共建 ${icon('arrow', 17)}`, 'go-contribute')}</div><div class="steps-list"><div class="step"><span>01</span><div><b>选择目标</b><p>选好校区、食堂和店铺，确认信息加在哪里。</p></div></div><div class="step"><span>02</span><div><b>提交信息</b><p>填写你知道的部分，图片可用于菜品展示。</p></div></div><div class="step"><span>03</span><div><b>管理员确认</b><p>审核后暂时展示，或直接收录。</p></div></div></div></div></section>
   </main>`;
 }
+
+function directoryView() {
+  const filtered = canteensHere().filter((canteen) => `${canteen.name} ${canteen.location}`.toLowerCase().includes(state.query.toLowerCase()));
+  const proposed = state.data.contributions.filter((item) => item.status === 'provisional' && item.type === 'canteen' && item.campusId === state.campusId);
+  return `<main><section class="directory wrap"><div class="section-top"><div><span class="section-kicker">EXPLORE THE CANTEENS</span><h1>食堂展示</h1><p>选择校区，看看已经收录的食堂。每个校区都可以继续添加。</p></div><span class="section-deco">${icon('leaf', 26)}</span></div>${campusTabs()}<div class="directory-toolbar"><div class="search-box">${icon('search', 19)}<input id="search" aria-label="搜索食堂" placeholder="搜索食堂名称或位置" value="${escapeHtml(state.query)}" /></div><span class="toolbar-tip">${icon('shield', 16)} 共建信息先审核，再公开展示</span></div><div class="canteen-grid">${filtered.length ? filtered.map(canteenCard).join('') + addCanteenCard() : emptyCanteen()}</div>${proposed.length ? `<div class="home-proposals">${provisionalPanel(proposed)}</div>` : ''}</section></main>`;
+}
+
+function addCanteenCard() { return `<button class="canteen-card add-canteen-card" data-action="open-contribution" data-type="canteen">${icon('plus', 31)}<strong>添加食堂</strong><span>知道一间还未收录的食堂？<br>从这里申请补充。</span></button>`; }
 
 function canteenCard(item) {
   const count = activeShops().filter((shop) => shop.canteenId === item.id).length;
@@ -76,7 +81,7 @@ function emptyCanteen() {
   return `<div class="empty-canteen"><div class="empty-symbol">${icon('bowl', 40)}<span>${icon('plus', 20)}</span></div><span class="empty-kicker">A FRESH START</span><h3>${state.query ? '还没有找到这间食堂' : '这一页，等你写下第一笔。'}</h3><p>${state.query ? '换个关键词试试，或申请添加你知道的食堂。' : `${escapeHtml(campus()?.name)}还没有收录食堂。知道一间？花一分钟告诉我们。`}</p><button class="button outline" data-action="open-contribution" data-type="canteen">${icon('plus', 18)} 申请添加食堂</button></div>`;
 }
 
-function breadcrumb(parts) { return `<div class="breadcrumb"><button data-view="home">发现食堂</button>${parts.map((item) => ` ${icon('chevron', 14)} <span>${escapeHtml(item)}</span>`).join('')}</div>`; }
+function breadcrumb(parts) { return `<div class="breadcrumb"><button data-view="directory">食堂展示</button>${parts.map((item) => ` ${icon('chevron', 14)} <span>${escapeHtml(item)}</span>`).join('')}</div>`; }
 
 function canteenView() {
   const item = activeCanteens().find((entry) => entry.id === state.canteenId);
@@ -90,11 +95,23 @@ function canteenView() {
 }
 
 function shopCard(item) {
-  return `<button class="shop-card" data-shop="${item.id}"><span class="shop-card-art">${icon('bowl', 34)}</span><span class="shop-card-body"><span class="shop-category">${escapeHtml(item.category || '分类待补充')}</span><strong>${escapeHtml(item.name)}</strong><span>${icon('pin', 15)} ${escapeHtml(item.location || '位置待补充')}</span><span class="shop-card-link">查看详情 ${icon('arrow', 17)}</span></span></button>`;
+  const cover = coverForShop(item);
+  return `<button class="shop-card" data-shop="${item.id}"><span class="shop-card-art">${cover ? `<img src="${escapeHtml(cover.url)}" alt="${escapeHtml(cover.caption)}" />` : icon('bowl', 34)}</span><span class="shop-card-body"><span class="shop-category">${escapeHtml(item.category || '分类待补充')}</span><strong>${escapeHtml(item.name)}</strong><span>${icon('pin', 15)} ${escapeHtml(item.location || '位置待补充')}</span><span class="shop-card-link">查看详情 ${icon('arrow', 17)}</span></span></button>`;
+}
+
+function shopImages(shop) {
+  const dishes = (shop.dishes || []).filter((dish) => dish.status !== 'archived');
+  return [...dishes.filter((dish) => dish.photo).map((dish) => ({ url: dish.photo, caption: dish.name })), ...(shop.photos || []).filter((photo) => photo.status !== 'archived').map((photo) => ({ url: photo.url, caption: dishes.find((dish) => dish.id === photo.dishId)?.name || photo.caption || shop.name }))];
+}
+function coverForShop(shop) {
+  const images = shopImages(shop);
+  if (!images.length) return null;
+  const hash = [...shop.id].reduce((value, character) => value + character.charCodeAt(0), 0);
+  return images[hash % images.length];
 }
 
 function provisionalPanel(items) {
-  return `<section class="provisional-panel"><div class="detail-section-head"><div><span class="section-kicker">UNDER REVIEW</span><h2>暂时展示中的共建信息</h2></div></div>${items.map((item) => `<article class="provisional-item"><span class="status-pill">待社区确认</span><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.detail || '暂无补充说明')}</p><small>由 ${escapeHtml(item.author)} 提交 · 展示至 ${dateLabel(item.expiresAt)}</small></article>`).join('')}</section>`;
+  return `<section class="provisional-panel"><div class="detail-section-head"><div><span class="section-kicker">UNDER REVIEW</span><h2>暂时展示中的共建信息</h2></div></div>${items.map((item) => `<article class="provisional-item"><span class="status-pill">待社区确认</span><strong>${escapeHtml(item.title)}</strong>${item.photo ? `<img class="provisional-photo" src="${escapeHtml(item.photo)}" alt="${escapeHtml(item.title)}" />` : ''}${item.detail ? `<p>${escapeHtml(item.detail)}</p>` : ''}<small>由 ${escapeHtml(item.author)} 提交 · 展示至 ${dateLabel(item.expiresAt)}</small></article>`).join('')}</section>`;
 }
 
 function shopView() {
@@ -102,13 +119,15 @@ function shopView() {
   if (!item) return missingView();
   const canteen = activeCanteens().find((entry) => entry.id === item.canteenId);
   const comments = state.data.comments.filter((entry) => entry.shopId === item.id);
+  const relatedPosts = (state.data.posts || []).filter((entry) => entry.shopId === item.id);
   const provisional = state.data.contributions.filter((entry) => entry.status === 'provisional' && entry.shopId === item.id);
   const visibleDishes = item.dishes.filter((entry) => entry.status !== 'archived');
-  const visiblePhotos = item.photos.filter((entry) => entry.status !== 'archived');
-  return `<main class="wrap detail-page">${breadcrumb([canteen?.name || '食堂', item.name])}<div class="shop-detail-head"><div><span class="detail-label">${escapeHtml(canteen?.name || '')} / SHOP</span><h1>${escapeHtml(item.name)}</h1><p>${escapeHtml(item.category || '分类待补充')} · ${escapeHtml(item.location || '位置待补充')}</p><div class="detail-facts"><span>${icon('clock', 18)} 食堂 ${escapeHtml(canteen?.hours || '营业时间待补充')}</span><span>${icon('spark', 18)} ${escapeHtml(item.lateHours || '店铺延时关门信息待补充')}</span></div></div><div class="shop-detail-art">${icon('bowl', 70)}</div></div>
-    <div class="detail-columns"><div><section class="detail-block"><div class="block-head"><div><span class="section-kicker">ON THE MENU</span><h2>菜品与价格</h2></div><button class="mini-add" data-action="open-contribution" data-type="dish" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${icon('plus', 17)} 补充菜品</button></div>${visibleDishes.length ? `<div class="dish-list">${visibleDishes.map((dish) => `<div><span><b>${escapeHtml(dish.name)}</b><small>${escapeHtml(dish.note || '')}</small></span><strong>${dish.price ? `¥${escapeHtml(dish.price)}` : '价格待补充'}</strong></div>`).join('')}</div>` : blankField('还没有菜品信息', '你可以补充菜品名称与参考价格。', 'dish', item.id, canteen?.id)}</section>
+  const visiblePhotos = shopImages(item);
+  const cover = coverForShop(item);
+  return `<main class="wrap detail-page">${breadcrumb([canteen?.name || '食堂', item.name])}<div class="shop-detail-head"><div><span class="detail-label">${escapeHtml(canteen?.name || '')} / SHOP</span><h1>${escapeHtml(item.name)}</h1><p>${escapeHtml(item.category || '分类待补充')} · ${escapeHtml(item.location || '位置待补充')}</p><div class="detail-facts"><span>${icon('clock', 18)} 食堂 ${escapeHtml(canteen?.hours || '营业时间待补充')}</span><span>${icon('spark', 18)} ${escapeHtml(item.lateHours || '店铺延时关门信息待补充')}</span></div></div><div class="shop-detail-art">${cover ? `<img src="${escapeHtml(cover.url)}" alt="${escapeHtml(cover.caption)}" />` : icon('bowl', 70)}</div></div>
+    <div class="detail-columns"><div><section class="detail-block"><div class="block-head"><div><span class="section-kicker">ON THE MENU</span><h2>菜品与价格</h2></div><button class="mini-add" data-action="open-contribution" data-type="dish" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${icon('plus', 17)} 补充菜品</button></div>${visibleDishes.length ? `<div class="dish-list">${visibleDishes.map((dish) => `<div>${dish.photo ? `<img class="dish-thumb" src="${escapeHtml(dish.photo)}" alt="${escapeHtml(dish.name)}" />` : ''}<span><b>${escapeHtml(dish.name)}</b><small>${escapeHtml(dish.note || '')}</small></span><strong>${dish.price ? `¥${escapeHtml(dish.price)}` : '价格待补充'}</strong></div>`).join('')}</div>` : blankField('还没有菜品信息', '你可以补充菜品名称与参考价格。', 'dish', item.id, canteen?.id)}</section>
     <section class="detail-block"><div class="block-head"><div><span class="section-kicker">FROM THE COMMUNITY</span><h2>评论</h2></div><span class="small-note">演示身份 · 本地保存</span></div><form id="comment-form" class="comment-form"><input name="author" maxlength="30" required placeholder="你的昵称（仅供本地预览）" aria-label="昵称" /><textarea name="body" maxlength="500" required placeholder="写下你对这家店的印象…" aria-label="评论内容"></textarea><div><small>提交前会经过演示屏蔽词筛选（${filterVersion}）</small><button class="button small primary" type="submit">发布评论</button></div></form>${comments.length ? comments.map((entry) => `<article class="comment"><span class="avatar">${escapeHtml(entry.author.slice(0, 1))}</span><div><b>${escapeHtml(entry.author)}</b><time>${dateLabel(entry.createdAt)}</time><p>${escapeHtml(entry.body)}</p></div></article>`).join('') : '<p class="quiet-empty">这里还没有评论，欢迎留下第一条。</p>'}</section></div>
-    <aside><section class="aside-card"><span class="section-kicker">ABOUT THIS SHOP</span><h3>一起把信息补全</h3><p>如果位置、分类或营业时间有变化，可以提交补充申请。</p><button class="button outline full" data-action="open-contribution" data-type="shop-info" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${icon('plus', 17)} 补充店铺信息</button></section><section class="aside-card photo-card"><div class="block-head"><h3>店铺图片</h3><button class="mini-add" data-action="open-contribution" data-type="photo" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${icon('plus', 17)}</button></div>${visiblePhotos.length ? visiblePhotos.map((photo) => `<img class="shop-photo" src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.caption)}" />`).join('') : `<div class="photo-empty">${icon('image', 32)}<span>暂无图片<br>欢迎补充</span></div>`}</section></aside></div>${provisional.length ? provisionalPanel(provisional) : ''}</main>`;
+    <aside><section class="aside-card"><span class="section-kicker">ABOUT THIS SHOP</span><h3>一起把信息补全</h3><p>如果位置、分类或营业时间有变化，可以提交补充申请。</p><button class="button outline full" data-action="open-contribution" data-type="shop-info" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${icon('plus', 17)} 补充店铺信息</button></section><section class="aside-card photo-card"><div class="block-head"><h3>菜品图片</h3><button class="mini-add" data-action="open-contribution" data-type="photo" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${icon('plus', 17)}</button></div>${visiblePhotos.length ? visiblePhotos.map((photo) => `<figure class="shop-photo-figure"><img class="shop-photo" src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.caption)}" /><figcaption>${escapeHtml(photo.caption)}</figcaption></figure>`).join('') : `<div class="photo-empty">${icon('image', 32)}<span>暂无图片<br>欢迎补充</span></div>`}</section><section class="aside-card"><div class="block-head"><h3>相关美食贴</h3><button class="mini-add" data-action="open-post">${icon('plus', 17)} 发帖</button></div>${relatedPosts.length ? relatedPosts.slice(0, 3).map((post) => `<div class="related-post"><b>${escapeHtml(post.title)}</b><small>${escapeHtml(post.author)}</small></div>`).join('') : '<p>还没有关联帖子。</p>'}</section></aside></div>${provisional.length ? provisionalPanel(provisional) : ''}</main>`;
 }
 
 function blankField(title, description, type, shopId, canteenId) { return `<div class="blank-field"><span class="blank-field-icon">${icon('plus', 22)}</span><strong>${title}</strong><p>${description}</p><button class="text-action" data-action="open-contribution" data-type="${type}" data-shop-id="${shopId}" data-canteen-id="${canteenId}">申请补充 ${icon('arrow', 17)}</button></div>`; }
@@ -116,6 +135,16 @@ function missingView() { return `<main class="wrap missing-view"><h1>这条资�
 
 function contributeView() {
   return `<main class="wrap content-page"><div class="page-intro"><span class="section-kicker">A SHARED LITTLE GUIDE</span><h1>从你知道的<br><em>一点点开始。</em></h1><p>食堂和店铺信息不需要由一个人写完。你提交的内容会先交给管理员审核，再决定是否暂示或收录。</p></div><div class="contribute-grid"><button class="contribute-tile" data-action="open-contribution" data-type="canteen"><span class="tile-icon green">${icon('bowl', 26)}</span><strong>添加食堂</strong><p>补上一个校区里尚未收录的食堂。</p><span>开始填写 ${icon('arrow', 17)}</span></button><button class="contribute-tile" data-action="open-contribution" data-type="shop"><span class="tile-icon peach">${icon('pin', 26)}</span><strong>添加店铺</strong><p>告诉大家这家店在哪里、叫什么。</p><span>开始填写 ${icon('arrow', 17)}</span></button><button class="contribute-tile" data-action="open-contribution" data-type="dish"><span class="tile-icon cream">${icon('leaf', 26)}</span><strong>补充菜品</strong><p>菜名和参考价格，让选择更轻松。</p><span>开始填写 ${icon('arrow', 17)}</span></button><button class="contribute-tile" data-action="open-contribution" data-type="hours"><span class="tile-icon blue">${icon('clock', 26)}</span><strong>更新营业时间</strong><p>食堂时间有变化，就来更新它。</p><span>开始填写 ${icon('arrow', 17)}</span></button></div><div class="process-banner"><span>${icon('shield', 22)}</span><div><b>每条共建都会先经过管理员确认</b><p>管理员可让信息暂示 24 小时，或核实后直接固定。当前预览数据保存在你的浏览器中。</p></div></div></main>`;
+}
+
+function postsView() {
+  const posts = state.data.posts || [];
+  return `<main class="wrap content-page"><div class="page-intro"><span class="section-kicker">FOOD STORIES</span><h1>美食贴</h1><p>选一家已收录的店铺，分享你的一餐。当前内容仅保存在本地浏览器。</p><button class="button primary" data-action="open-post">${icon('plus', 18)} 发美食贴</button></div><div class="posts-grid">${posts.length ? posts.map((post) => { const shop = activeShops().find((entry) => entry.id === post.shopId); return `<article class="post-card">${post.photo ? `<img src="${escapeHtml(post.photo)}" alt="${escapeHtml(post.title)}" />` : ''}<div><span class="section-kicker">${escapeHtml(shop?.name || '店铺')}</span><h2>${escapeHtml(post.title)}</h2><p>${escapeHtml(post.body)}</p><small>${escapeHtml(post.author)} · ${dateLabel(post.createdAt)}</small></div></article>`; }).join('') : `<div class="empty-canteen"><span class="empty-kicker">FIRST STORY</span><h3>还没有美食贴</h3><p>发一篇帖子，分享你最近发现的味道。</p><button class="button outline" data-action="open-post">写第一篇 ${icon('arrow', 17)}</button></div>`}</div></main>`;
+}
+
+function postModal() {
+  const shops = activeShops();
+  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal" role="dialog" aria-modal="true" aria-label="发美食贴" data-stop><div class="modal-head"><div><span class="section-kicker">FOOD STORIES</span><h2>发美食贴</h2><p>选好店铺，再分享你的发现。</p></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div>${shops.length ? `<form id="post-form" class="modal-form"><label>关联店铺<select name="shopId" required><option value="">请选择店铺</option>${shops.map((shop) => `<option value="${shop.id}" ${shop.id === state.shopId ? 'selected' : ''}>${escapeHtml(activeCanteens().find((canteen) => canteen.id === shop.canteenId)?.name || '')} · ${escapeHtml(shop.name)}</option>`).join('')}</select></label><label>标题<input name="title" maxlength="80" required placeholder="这餐有什么值得分享？" /></label><label>正文<textarea name="body" maxlength="2000" required placeholder="写下味道、感受或你的发现…"></textarea></label><label>照片（选填，本地预览小于 900KB）<input name="photoFile" type="file" accept="image/png,image/jpeg,image/webp" /></label><label>昵称<input name="author" maxlength="30" required placeholder="仅供本地预览" /></label><div class="form-notice">${icon('shield', 17)} 帖子经过演示屏蔽词筛选，本地预览不会上传服务器。</div><button class="button primary full" type="submit">发布美食贴</button></form>` : `<div class="post-empty-note">还没有已收录店铺。先到「一起共建」申请添加店铺，管理员确认后即可关联发帖。</div>`}</div></div>`;
 }
 
 function adminView() {
@@ -144,20 +173,25 @@ function contributionModal() {
   const context = state.modal;
   const type = context.type;
   const labels = { canteen: '申请添加食堂', shop: '申请添加店铺', dish: '申请补充菜品', hours: '申请更新营业时间', photo: '申请补充图片', 'shop-info': '申请补充店铺信息' };
-  const titleLabels = { canteen: '食堂名称', shop: '店铺名称', dish: '菜品名称', hours: '时间说明标题', photo: '图片说明', 'shop-info': '信息标题' };
+  const titleLabels = { canteen: '食堂名称', shop: '店铺名称', dish: '菜品名称', hours: '时间说明标题', 'shop-info': '信息标题' };
   const selectedCampusId = context.campusId || state.campusId;
   const candidates = activeCanteens().filter((item) => item.campusId === selectedCampusId);
   const shops = activeShops().filter((item) => candidates.some((canteen) => canteen.id === item.canteenId));
+  const selectedShop = shops.find((item) => item.id === context.shopId);
+  const dishes = selectedShop?.dishes.filter((item) => item.status !== 'archived') || [];
+  const selectedCanteen = candidates.find((item) => item.id === context.canteenId);
   return `<div class="modal-backdrop" data-action="close-modal"><div class="modal" role="dialog" aria-modal="true" aria-label="${labels[type]}" data-stop><div class="modal-head"><div><span class="section-kicker">ADD A LITTLE DETAIL</span><h2>${labels[type]}</h2><p>只填写你确定的信息，管理员会先审核。</p></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div><form id="contribution-form" class="modal-form"><input type="hidden" name="type" value="${type}" />
+    <div class="contribution-target"><b>这条信息将添加到</b><span id="contribution-target-text">${escapeHtml(state.data.campuses.find((item) => item.id === selectedCampusId)?.name || '')}${selectedCanteen ? ` › ${escapeHtml(selectedCanteen.name)}` : type === 'canteen' ? ' › 新食堂' : ' › 待选食堂'}${selectedShop ? ` › ${escapeHtml(selectedShop.name)}` : ['dish', 'photo', 'shop-info'].includes(type) ? ' › 待选店铺' : ''}</span></div>
     <label>校区<select name="campusId" id="contrib-campus" required>${state.data.campuses.map((item) => `<option value="${item.id}" ${item.id === selectedCampusId ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></label>
-    ${type !== 'canteen' ? `<label>所属食堂<select name="canteenId" id="contrib-canteen" required><option value="">请选择食堂</option>${candidates.map((item) => `<option value="${item.id}" ${item.id === context.canteenId ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></label>` : ''}
-    ${['dish', 'photo', 'shop-info'].includes(type) ? `<label>所属店铺<select name="shopId" required><option value="">请选择店铺</option>${shops.map((item) => `<option value="${item.id}" ${item.id === context.shopId ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></label>` : ''}
-    <label>${titleLabels[type]}<input name="title" maxlength="120" required placeholder="${type === 'hours' ? '如：周一至周日营业时间' : `请输入${titleLabels[type]}`}" /></label>
+    ${type !== 'canteen' ? `<label>要补充的食堂<select name="canteenId" id="contrib-canteen" required><option value="">请选择食堂</option>${candidates.map((item) => `<option value="${item.id}" ${item.id === context.canteenId ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></label>` : ''}
+    ${['dish', 'photo', 'shop-info'].includes(type) ? `<label>要补充的店铺<select name="shopId" id="contrib-shop" required><option value="">请选择店铺</option>${shops.filter((item) => item.canteenId === context.canteenId).map((item) => `<option value="${item.id}" ${item.id === context.shopId ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></label>` : ''}
+    ${type === 'photo' ? `<label>对应菜品<select name="dishId" id="contrib-dish" required><option value="">请选择菜品</option>${dishes.map((dish) => `<option value="${dish.id}">${escapeHtml(dish.name)}</option>`).join('')}</select></label><p class="field-hint" id="dish-hint">${dishes.length ? '图片说明将直接使用菜品名称。' : '这家店还没有菜品，请先申请补充菜品。'}</p>` : `<label>${titleLabels[type]}<input name="title" maxlength="120" required placeholder="${type === 'hours' ? '如：周一至周日营业时间' : `请输入${titleLabels[type]}`}" /></label>`}
     ${type === 'shop' ? `<label>店铺分类（选填）<input name="category" maxlength="40" placeholder="如：面食、轻食、饮品" /></label>` : ''}
     ${type === 'dish' ? `<label>参考价格（选填）<input name="price" inputmode="decimal" maxlength="20" placeholder="如：12.00" /></label>` : ''}
+    ${type === 'dish' ? `<label>菜品照片（选填，本地预览小于 900KB）<input name="photoFile" type="file" accept="image/png,image/jpeg,image/webp" /></label>` : ''}
     ${type === 'shop-info' ? `<label>补充哪一项<select name="field"><option value="location">位置</option><option value="category">分类</option><option value="lateHours">延时关门时间</option></select></label>` : ''}
     ${type === 'photo' ? `<label>选择图片（本地预览，建议小于 900KB）<input name="photoFile" type="file" accept="image/png,image/jpeg,image/webp" required /></label>` : ''}
-    <label>${type === 'hours' ? '营业时间' : type === 'shop' ? '位置与补充说明' : '详细说明'}<textarea name="detail" maxlength="600" ${type === 'hours' || type === 'shop-info' ? 'required' : ''} placeholder="${type === 'hours' ? '如：周一至周五 07:00–20:00；周末 08:00–19:00' : '写下位置、来源或你知道的其他信息…'}"></textarea></label>
+    ${type !== 'photo' ? `<label>${type === 'hours' ? '营业时间' : type === 'shop' || type === 'canteen' ? '位置与补充说明' : '详细说明（选填）'}<textarea name="detail" maxlength="600" ${type === 'hours' || type === 'shop-info' ? 'required' : ''} placeholder="${type === 'hours' ? '如：周一至周五 07:00–20:00；周末 08:00–19:00' : type === 'dish' ? '可补充口味、分量、特色或食材信息…' : type === 'shop-info' ? '写下需要更新的信息…' : '写下位置、来源或你知道的其他信息…'}"></textarea></label>` : ''}
     <label>提交人昵称<input name="author" maxlength="30" required placeholder="仅供本地演示，正式版将关联登录账号" /></label><div class="form-notice">${icon('shield', 17)} 申请先进入管理员队列。图片仅供本地预览，不会上传到服务器。</div><button class="button primary full" type="submit">提交申请 ${icon('arrow', 18)}</button></form></div></div>`;
 }
 
@@ -194,11 +228,12 @@ function shopContentModal() {
   }
   const isDish = context.kind === 'dish-editor';
   const item = context.id && (isDish ? shop.dishes : shop.photos).find((entry) => entry.id === context.id);
-  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal narrow" role="dialog" aria-modal="true" aria-label="${isDish ? '编辑菜品' : '编辑图片'}" data-stop><div class="modal-head"><div><span class="section-kicker">ADMIN EDIT</span><h2>${item ? '编辑' : '添加'}${isDish ? '菜品' : '图片'}</h2></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div><form id="shop-content-form" class="modal-form"><input type="hidden" name="contentKind" value="${isDish ? 'dish' : 'photo'}"/><input type="hidden" name="shopId" value="${shop.id}"/><input type="hidden" name="entryId" value="${item?.id || ''}"/>${isDish ? `<label>菜品名称<input name="name" maxlength="60" required value="${escapeHtml(item?.name || '')}"/></label><label>参考价格<input name="price" maxlength="20" value="${escapeHtml(item?.price || '')}" placeholder="如 12.00"/></label><label>说明<textarea name="note" maxlength="200">${escapeHtml(item?.note || '')}</textarea></label>` : `<label>图片说明<input name="caption" maxlength="80" required value="${escapeHtml(item?.caption || '')}"/></label><label>选择图片${item ? '（不选择则保留原图）' : ''}<input name="photoFile" type="file" accept="image/png,image/jpeg,image/webp" ${item ? '' : 'required'}/></label>`}<button class="button primary full" type="submit">保存${isDish ? '菜品' : '图片'}</button></form></div></div>`;
+  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal narrow" role="dialog" aria-modal="true" aria-label="${isDish ? '编辑菜品' : '编辑图片'}" data-stop><div class="modal-head"><div><span class="section-kicker">ADMIN EDIT</span><h2>${item ? '编辑' : '添加'}${isDish ? '菜品' : '图片'}</h2></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div><form id="shop-content-form" class="modal-form"><input type="hidden" name="contentKind" value="${isDish ? 'dish' : 'photo'}"/><input type="hidden" name="shopId" value="${shop.id}"/><input type="hidden" name="entryId" value="${item?.id || ''}"/>${isDish ? `<label>菜品名称<input name="name" maxlength="60" required value="${escapeHtml(item?.name || '')}"/></label><label>参考价格<input name="price" maxlength="20" value="${escapeHtml(item?.price || '')}" placeholder="如 12.00"/></label><label>说明<textarea name="note" maxlength="200">${escapeHtml(item?.note || '')}</textarea></label><label>菜品照片（选填）<input name="photoFile" type="file" accept="image/png,image/jpeg,image/webp" /></label>` : `<label>对应菜品<select name="dishId" required><option value="">请选择菜品</option>${shop.dishes.filter((dish) => dish.status !== 'archived').map((dish) => `<option value="${dish.id}" ${dish.id === item?.dishId ? 'selected' : ''}>${escapeHtml(dish.name)}</option>`).join('')}</select></label><p class="field-hint">图片说明自动使用菜品名称。</p><label>选择图片${item ? '（不选择则保留原图）' : ''}<input name="photoFile" type="file" accept="image/png,image/jpeg,image/webp" ${item ? '' : 'required'}/></label>`}<button class="button primary full" type="submit">保存${isDish ? '菜品' : '图片'}</button></form></div></div>`;
 }
 
 function modal() {
   if (!state.modal) return '';
+  if (state.modal.kind === 'post') return postModal();
   if (state.modal.kind === 'contribution') return contributionModal();
   if (state.modal.kind === 'review') return decisionModal();
   if (state.modal.kind === 'confirm') return confirmModal();
@@ -207,7 +242,7 @@ function modal() {
 }
 
 function render() {
-  root.innerHTML = `${header()}${state.notice ? `<div class="toast" role="status">${escapeHtml(state.notice)}<button data-action="dismiss-notice" aria-label="关闭提示">${icon('close', 15)}</button></div>` : ''}${state.view === 'home' ? home() : state.view === 'canteen' ? canteenView() : state.view === 'shop' ? shopView() : state.view === 'contribute' ? contributeView() : state.view === 'admin' ? adminView() : futureView()}${footer()}${modal()}`;
+  root.innerHTML = `${header()}${state.notice ? `<div class="toast" role="status">${escapeHtml(state.notice)}<button data-action="dismiss-notice" aria-label="关闭提示">${icon('close', 15)}</button></div>` : ''}${state.view === 'home' ? home() : state.view === 'directory' ? directoryView() : state.view === 'posts' ? postsView() : state.view === 'canteen' ? canteenView() : state.view === 'shop' ? shopView() : state.view === 'contribute' ? contributeView() : state.view === 'admin' ? adminView() : futureView()}${footer()}${modal()}`;
   document.body.classList.toggle('modal-open', Boolean(state.modal));
 }
 
@@ -232,6 +267,8 @@ root.addEventListener('click', async (event) => {
   if (command === 'close-modal') { if (event.target.closest('[data-stop]') && target.classList.contains('modal-backdrop')) return; state.modal = null; render(); return; }
   if (command === 'dismiss-notice') { state.notice = ''; render(); return; }
   if (command === 'go-contribute') { go('contribute'); return; }
+  if (command === 'scroll-how') { document.querySelector('#how-it-works')?.scrollIntoView({ behavior: 'smooth' }); return; }
+  if (command === 'open-post') { state.modal = { kind: 'post' }; render(); return; }
   if (command === 'open-contribution') { state.modal = { kind: 'contribution', type: target.dataset.type, campusId: state.campusId, canteenId: target.dataset.canteenId || null, shopId: target.dataset.shopId || null }; render(); return; }
   if (command === 'edit-campus') { state.modal = { kind: 'campus' }; render(); return; }
   if (command === 'edit-canteen' || command === 'edit-shop') { state.modal = { kind: command === 'edit-canteen' ? 'canteen' : 'shop', id: target.dataset.id || null }; render(); return; }
@@ -264,41 +301,53 @@ root.addEventListener('input', (event) => {
     const grid = root.querySelector('.canteen-grid');
     if (grid) {
       const filtered = canteensHere().filter((canteen) => `${canteen.name} ${canteen.location}`.toLowerCase().includes(state.query.toLowerCase()));
-      grid.innerHTML = filtered.length ? filtered.map(canteenCard).join('') : emptyCanteen();
+      grid.innerHTML = filtered.length ? filtered.map(canteenCard).join('') + addCanteenCard() : emptyCanteen();
     }
   }
 });
 
 root.addEventListener('change', (event) => {
-  if (!['contrib-campus', 'contrib-canteen'].includes(event.target.id)) return;
+  if (!['contrib-campus', 'contrib-canteen', 'contrib-shop'].includes(event.target.id)) return;
   const form = event.target.closest('form');
   const campusId = form.querySelector('#contrib-campus')?.value;
   const canteenSelect = form.querySelector('#contrib-canteen');
-  if (!canteenSelect) return;
-  if (event.target.id === 'contrib-campus') {
+  if (event.target.id === 'contrib-campus' && canteenSelect) {
     const canteens = activeCanteens().filter((item) => item.campusId === campusId);
     canteenSelect.innerHTML = '<option value="">请选择食堂</option>' + canteens.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('');
   }
-  const shopSelect = form.querySelector('[name="shopId"]');
-  if (shopSelect) {
+  const shopSelect = form.querySelector('#contrib-shop');
+  if (shopSelect && event.target.id !== 'contrib-shop') {
     const shops = activeShops().filter((item) => item.canteenId === canteenSelect.value);
     shopSelect.innerHTML = '<option value="">请选择店铺</option>' + shops.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('');
   }
+  const dishSelect = form.querySelector('#contrib-dish');
+  if (dishSelect) {
+    const dishes = activeShops().find((shop) => shop.id === shopSelect?.value)?.dishes.filter((dish) => dish.status !== 'archived') || [];
+    dishSelect.innerHTML = '<option value="">请选择菜品</option>' + dishes.map((dish) => `<option value="${dish.id}">${escapeHtml(dish.name)}</option>`).join('');
+    form.querySelector('#dish-hint').textContent = dishes.length ? '图片说明将直接使用菜品名称。' : '这家店还没有菜品，请先申请补充菜品。';
+  }
+  const names = [form.querySelector('#contrib-campus')?.selectedOptions[0]?.textContent, canteenSelect ? canteenSelect.selectedOptions[0]?.textContent : '新食堂', shopSelect?.selectedOptions[0]?.textContent].filter(Boolean);
+  form.querySelector('#contribution-target-text').textContent = names.join(' › ');
 });
 
 root.addEventListener('submit', async (event) => {
-  if (!['contribution-form', 'edit-form', 'comment-form', 'review-form', 'shop-content-form'].includes(event.target.id)) return;
+  if (!['contribution-form', 'edit-form', 'comment-form', 'review-form', 'shop-content-form', 'post-form'].includes(event.target.id)) return;
   event.preventDefault();
   const form = event.target;
   const values = Object.fromEntries(new FormData(form).entries());
   try {
-    if (form.id === 'contribution-form') {
+    if (form.id === 'contribution-form' || form.id === 'post-form') {
       if (values.photoFile instanceof File && values.photoFile.size) {
         if (values.photoFile.size > 900_000) throw new Error('本地预览图片请小于 900KB。');
         if (!['image/jpeg', 'image/png', 'image/webp'].includes(values.photoFile.type)) throw new Error('请上传 JPG、PNG 或 WebP 图片。');
         values.photo = await fileAsDataUrl(values.photoFile);
       }
       delete values.photoFile;
+      if (form.id === 'post-form') {
+        const screening = screenComment(`${values.title} ${values.body}`);
+        if (!screening.allowed) throw new Error(screening.reason);
+        await repo.submitPost(values); state.modal = null; state.view = 'posts'; await refresh(); showNotice('美食贴已保存在本地预览。'); return;
+      }
       await repo.submitContribution(values);
       state.modal = null; await refresh(); showNotice('申请已提交，等待管理员审核。'); return;
     }
@@ -315,15 +364,14 @@ root.addEventListener('submit', async (event) => {
     }
     if (form.id === 'shop-content-form') {
       const shopId = values.shopId;
-      if (values.contentKind === 'dish') await repo.saveDish({ ...values, id: values.entryId });
-      else {
-        if (values.photoFile instanceof File && values.photoFile.size) {
+      if (values.photoFile instanceof File && values.photoFile.size) {
           if (values.photoFile.size > 900_000) throw new Error('本地预览图片请小于 900KB。');
           if (!['image/jpeg', 'image/png', 'image/webp'].includes(values.photoFile.type)) throw new Error('请上传 JPG、PNG 或 WebP 图片。');
           values.photo = await fileAsDataUrl(values.photoFile);
-        }
-        await repo.savePhoto({ ...values, id: values.entryId });
       }
+      delete values.photoFile;
+      if (values.contentKind === 'dish') await repo.saveDish({ ...values, id: values.entryId });
+      else await repo.savePhoto({ ...values, id: values.entryId });
       state.modal = { kind: 'shop-content', shopId }; await refresh(); showNotice('店铺资料已保存。'); return;
     }
     const screening = screenComment(values.body);
