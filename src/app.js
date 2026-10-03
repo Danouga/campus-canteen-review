@@ -6,7 +6,7 @@ import { imageAsDataUrl } from './image-compression.js';
 const repo = createRepository();
 const root = document.querySelector('#app');
 const savedActorId = localStorage.getItem('canteen-guide-demo-actor');
-const state = { data: null, actorId: demoUsers.some((user) => user.id === savedActorId) ? savedActorId : 'demo-author', campusId: 'campus-a', view: 'home', canteenId: null, shopId: null, dishId: null, postId: null, query: '', modal: null, profileOpen: false, profileTab: 'overview', notice: '', storageMode: 'local' };
+const state = { data: null, actorId: demoUsers.some((user) => user.id === savedActorId) ? savedActorId : 'demo-author', campusId: 'campus-a', view: 'home', canteenId: null, shopId: null, dishId: null, postId: null, query: '', modal: null, lightbox: null, commentSort: 'newest', profileOpen: false, profileTab: 'overview', notice: '', storageMode: 'local' };
 
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 const dateLabel = (value) => value ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '—';
@@ -20,6 +20,19 @@ const unreadCount = () => state.data.contributions.filter((item) => item.ownerId
 const postPreview = (post) => String(post.body || '').slice(0, 105);
 const postMarkup = (post) => post.contentHtml ? sanitizeRichHtml(post.contentHtml) : `<p>${escapeHtml(post.body || '').replace(/\n/g, '<br>')}</p>${post.photo ? `<img src="${escapeHtml(post.photo)}" alt="帖子图片" />` : ''}`;
 const storageName = () => state.storageMode === 'mysql' ? '本机 MySQL 预览库' : '当前浏览器';
+const uploaderName = (ownerId, fallback) => demoUsers.find((user) => user.id === ownerId)?.name || fallback || '上传者未记录';
+function reactionInfo(kind, targetId) {
+  const reactions = (state.data.reactions || []).filter((entry) => entry.targetKind === kind && entry.targetId === targetId);
+  return { agree: reactions.filter((entry) => entry.stance === 'agree').length, disagree: reactions.filter((entry) => entry.stance === 'disagree').length, mine: reactions.find((entry) => entry.actorId === state.actorId)?.stance };
+}
+function reactionButtons(kind, item) {
+  const counts = reactionInfo(kind, item.id);
+  const own = item.ownerId === state.actorId;
+  return `<div class="reaction-actions" aria-label="赞同与反对"><button type="button" data-action="react" data-kind="${kind}" data-id="${item.id}" data-stance="agree" class="${counts.mine === 'agree' ? 'selected' : ''}" ${own ? 'disabled title="不能给自己的内容表态"' : ''} aria-pressed="${counts.mine === 'agree'}">${icon('heart', 16)} 赞同 ${counts.agree}</button><button type="button" data-action="react" data-kind="${kind}" data-id="${item.id}" data-stance="disagree" class="${counts.mine === 'disagree' ? 'selected disagree' : ''}" ${own ? 'disabled title="不能给自己的内容表态"' : ''} aria-pressed="${counts.mine === 'disagree'}">${icon('brokenHeart', 16)} 反对 ${counts.disagree}</button></div>`;
+}
+function photoOpenButton(photo, fallback = '') {
+  return `<button class="gallery-photo-open" type="button" data-action="open-lightbox" data-caption="${escapeHtml(photo.caption || fallback)}" data-owner-id="${escapeHtml(photo.ownerId || '')}" data-uploader="${escapeHtml(photo.author || '')}" aria-label="放大查看${escapeHtml(photo.caption || fallback)}"><img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.caption || fallback)}" /></button>`;
+}
 
 function icon(name, size = 20) {
   const paths = {
@@ -121,7 +134,7 @@ function shopCard(item) {
 
 function shopImages(shop) {
   const dishes = (shop.dishes || []).filter((dish) => dish.status !== 'archived');
-  return [...dishes.filter((dish) => dish.photo).map((dish) => ({ id: null, dishId: dish.id, url: dish.photo, caption: dish.name, ownerId: null })), ...(shop.photos || []).filter((photo) => photo.status !== 'archived').map((photo) => ({ id: photo.id, dishId: photo.dishId, url: photo.url, caption: dishes.find((dish) => dish.id === photo.dishId)?.name || photo.caption || shop.name, ownerId: photo.ownerId || null }))];
+  return [...dishes.filter((dish) => dish.photo).map((dish) => ({ id: null, dishId: dish.id, url: dish.photo, caption: dish.name, ownerId: dish.photoOwnerId || null })), ...(shop.photos || []).filter((photo) => photo.status !== 'archived').map((photo) => ({ id: photo.id, dishId: photo.dishId, url: photo.url, caption: dishes.find((dish) => dish.id === photo.dishId)?.name || photo.caption || shop.name, ownerId: photo.ownerId || null }))];
 }
 function dishImages(shop, dish) { return shopImages(shop).filter((photo) => photo.dishId === dish.id); }
 function coverForShop(shop) {
@@ -136,7 +149,7 @@ function portraitForShop(shop) {
 }
 
 function provisionalPanel(items) {
-  return `<section class="provisional-panel"><div class="detail-section-head"><div><span class="section-kicker">UNDER REVIEW</span><h2>暂时展示中的共建信息</h2></div></div>${items.map((item) => `<article class="provisional-item"><span class="status-pill">待社区确认</span><strong>${escapeHtml(item.title)}</strong>${item.photo ? `<img class="provisional-photo" src="${escapeHtml(item.photo)}" alt="${escapeHtml(item.title)}" />` : ''}${item.detail ? `<p>${escapeHtml(item.detail)}</p>` : ''}<small>由 ${escapeHtml(item.author)} 提交 · 展示至 ${dateLabel(item.expiresAt)}</small></article>`).join('')}</section>`;
+  return `<section class="provisional-panel"><div class="detail-section-head"><div><span class="section-kicker">UNDER REVIEW</span><h2>暂时展示中的共建信息</h2></div></div>${items.map((item) => `<article class="provisional-item"><span class="status-pill">待社区确认</span><strong>${escapeHtml(item.title)}</strong>${item.photo ? photoOpenButton({ url: item.photo, caption: item.title, ownerId: item.ownerId, author: item.author }) : ''}${item.detail ? `<p>${escapeHtml(item.detail)}</p>` : ''}<small>由 ${escapeHtml(item.author)} 提交 · 展示至 ${dateLabel(item.expiresAt)}</small>${reactionButtons('contribution', item)}</article>`).join('')}</section>`;
 }
 
 function commentsFor(targetKind, targetId) {
@@ -147,9 +160,9 @@ function commentsFor(targetKind, targetId) {
 }
 
 function commentSection(targetKind, targetId) {
-  const comments = commentsFor(targetKind, targetId);
+  const comments = commentsFor(targetKind, targetId).sort((a, b) => state.commentSort === 'agreed' ? reactionInfo('comment', b.id).agree - reactionInfo('comment', a.id).agree || Date.parse(b.createdAt) - Date.parse(a.createdAt) : Date.parse(b.createdAt) - Date.parse(a.createdAt));
   const title = targetKind === 'dish' ? '这道菜的评论' : targetKind === 'post' ? '帖子评论' : '评论';
-  return `<section class="detail-block comments-block"><div class="block-head"><div><span class="section-kicker">FROM THE COMMUNITY</span><h2>${title}</h2></div><span class="small-note">${escapeHtml(actor()?.name || '')} · ${storageName()}</span></div><form id="comment-form" class="comment-form" data-target-kind="${targetKind}" data-target-id="${targetId}"><textarea name="body" maxlength="500" required placeholder="写下真实、具体的感受…" aria-label="评论内容"></textarea><div><small>提交前经过演示屏蔽词筛选（${filterVersion}）</small><button class="button small primary" type="submit">发布评论</button></div></form>${comments.length ? comments.map((entry) => `<article class="comment"><span class="avatar">${escapeHtml(entry.author.slice(0, 1))}</span><div><b>${escapeHtml(entry.author)}</b><time>${dateLabel(entry.createdAt)}</time><p>${escapeHtml(entry.body)}</p>${entry.ownerId === state.actorId ? `<button class="quiet-button" data-action="delete-own" data-kind="comment" data-id="${entry.id}">删除我的评论</button>` : ''}</div></article>`).join('') : '<p class="quiet-empty">还没有评论，欢迎留下第一条。</p>'}</section>`;
+  return `<section class="detail-block comments-block"><div class="block-head"><div><span class="section-kicker">FROM THE COMMUNITY</span><h2>${title}</h2></div><span class="small-note">${escapeHtml(actor()?.name || '')} · ${storageName()}</span></div><form id="comment-form" class="comment-form" data-target-kind="${targetKind}" data-target-id="${targetId}"><textarea name="body" maxlength="500" required placeholder="写下真实、具体的感受…" aria-label="评论内容"></textarea><div><small>提交前经过演示屏蔽词筛选（${filterVersion}）</small><button class="button small primary" type="submit">发布评论</button></div></form><div class="comment-sort"><label for="comment-sort">评论排序</label><select id="comment-sort"><option value="newest" ${state.commentSort === 'newest' ? 'selected' : ''}>最新发布</option><option value="agreed" ${state.commentSort === 'agreed' ? 'selected' : ''}>赞同最多</option></select></div>${comments.length ? comments.map((entry) => `<article class="comment"><span class="avatar">${escapeHtml(entry.author.slice(0, 1))}</span><div><b>${escapeHtml(entry.author)}</b><time>${dateLabel(entry.createdAt)}</time><p>${escapeHtml(entry.body)}</p>${reactionButtons('comment', entry)}${entry.ownerId === state.actorId ? `<button class="quiet-button" data-action="delete-own" data-kind="comment" data-id="${entry.id}">删除我的评论</button>` : ''}</div></article>`).join('') : '<p class="quiet-empty">还没有评论，欢迎留下第一条。</p>'}</section>`;
 }
 
 function shopView() {
@@ -207,17 +220,17 @@ function profileSidebar() {
 function rulesView() {
   return `<main class="wrap content-page rules-page"><div class="page-intro"><span class="section-kicker">COMMUNITY GUIDE</span><h1>网站评价规则</h1><p>用真实、具体的信息帮助同学选择下一餐。本站不设置打分。以下规则会明确标出当前已启用的部分和后续草案。</p></div><div class="rules-grid">
     <section><span>01 · 已启用</span><h2>发布与共建</h2><p>店铺、菜品和美食贴可以评论，暂不开放回复。评论和帖子提交时使用演示屏蔽词筛选；共建申请由管理员审核，可暂示 24 小时或直接收录。</p></section>
-    <section><span>02 · 草案，未启用</span><h2>赞同与反对</h2><p>拟对标签、评论和帖子开放态度表态。每个已验证用户对同一对象只保留一次有效态度，可撤销或改选；不能给自己的内容表态。标签窗口里的心形按钮目前只是占位。</p></section>
+    <section><span>02 · 演示中</span><h2>赞同与反对</h2><p>评论、帖子与暂示中的共建信息可赞同或反对。每个演示身份对同一内容只保留一次有效态度，可撤销或改选；不能给自己的内容表态。标签窗口里的心形按钮目前只是占位。</p></section>
     <section><span>03 · 草案，未启用</span><h2>自动隐藏与复核</h2><p>评论或帖子若收到至少 5 个不同用户的反对，且反对数达到赞同数的 2 倍，拟先折叠并送管理员复核。标签达到相同门槛时拟进入复核，不直接删除。管理员可恢复误伤内容。</p></section>
     <section><span>04 · 草案，未启用</span><h2>推荐票</h2><p>每人每天获得 1 张基础票；额外奖励票可保留。同一店铺每人每天最多投 3 张。店铺票数按周清零并生成当周排行，个人未使用的奖励票不随店铺周榜清零。</p></section>
     <section><span>05 · 草案，未启用</span><h2>额外推荐票</h2><p>拟定评论获得 5 个不同用户赞同、帖子获得 10 个不同用户赞同，或共建申请被固定收录时，各奖励 1 张；每条内容只奖励一次，不计本人表态。最终门槛将在真实用户试用后调整。</p></section>
-    <section><span>06 · 当前身份说明</span><h2>演示与正式开放</h2><p>当前的发布人、浏览人、管理员可以随时切换，不代表已验证身份，内容保存在${storageName()}。赞同、反对、推荐票和自动隐藏要等学校登录与服务端权限接入后启用。</p></section>
+    <section><span>06 · 当前身份说明</span><h2>演示与正式开放</h2><p>当前的发布人、浏览人、管理员可以随时切换，不代表已验证身份，内容保存在${storageName()}。目前的表态用于测试交互；推荐票和自动隐藏仍待真实身份与服务端权限接入。</p></section>
   </div></main>`;
 }
 
 function postsView() {
   const posts = (state.data.posts || []).filter((entry) => entry.status !== 'archived');
-  return `<main class="wrap content-page"><div class="page-intro"><span class="section-kicker">FOOD STORIES</span><h1>美食贴</h1><p>选一家已收录的店铺，分享你的一餐。当前内容保存在${storageName()}。</p><button class="button primary" data-action="open-post">${icon('plus', 18)} 发美食贴</button></div><div class="posts-grid">${posts.length ? posts.map((post) => { const shop = activeShops().find((entry) => entry.id === post.shopId); return `<article class="post-card" data-post="${post.id}" role="link" tabindex="0" aria-label="阅读${escapeHtml(post.title)}">${post.photo ? `<img src="${escapeHtml(post.photo)}" alt="${escapeHtml(post.title)}" />` : ''}<div><span class="section-kicker">${escapeHtml(shop?.name || '店铺')}</span><h2>${escapeHtml(post.title)}</h2><p>${escapeHtml(postPreview(post))}${post.body?.length > 105 ? '…' : ''}</p><small>${escapeHtml(post.author)} · ${dateLabel(post.createdAt)}</small></div></article>`; }).join('') : `<div class="empty-canteen"><span class="empty-kicker">FIRST STORY</span><h3>还没有美食贴</h3><p>发一篇帖子，分享你最近发现的味道。</p><button class="button outline" data-action="open-post">写第一篇 ${icon('arrow', 17)}</button></div>`}</div></main>`;
+  return `<main class="wrap content-page"><div class="page-intro"><span class="section-kicker">FOOD STORIES</span><h1>美食贴</h1><p>选一家已收录的店铺，分享你的一餐。当前内容保存在${storageName()}。</p><button class="button primary" data-action="open-post">${icon('plus', 18)} 发美食贴</button></div><div class="posts-grid">${posts.length ? posts.map((post) => { const shop = activeShops().find((entry) => entry.id === post.shopId); return `<article class="post-card" data-post="${post.id}" role="link" tabindex="0" aria-label="阅读${escapeHtml(post.title)}">${post.photo ? `<img src="${escapeHtml(post.photo)}" alt="${escapeHtml(post.title)}" />` : ''}<div><span class="section-kicker">${escapeHtml(shop?.name || '店铺')}</span><h2>${escapeHtml(post.title)}</h2><p>${escapeHtml(postPreview(post))}${post.body?.length > 105 ? '…' : ''}</p><small>${escapeHtml(post.author)} · ${dateLabel(post.createdAt)}</small>${reactionButtons('post', post)}</div></article>`; }).join('') : `<div class="empty-canteen"><span class="empty-kicker">FIRST STORY</span><h3>还没有美食贴</h3><p>发一篇帖子，分享你最近发现的味道。</p><button class="button outline" data-action="open-post">写第一篇 ${icon('arrow', 17)}</button></div>`}</div></main>`;
 }
 
 function postDetailView() {
@@ -225,12 +238,14 @@ function postDetailView() {
   if (!post) return missingView();
   const shop = activeShops().find((entry) => entry.id === post.shopId);
   const canteen = activeCanteens().find((entry) => entry.id === shop?.canteenId);
-  return `<main class="wrap post-detail-page"><div class="breadcrumb"><button data-view="posts">美食贴</button>${icon('chevron', 14)}<span>${escapeHtml(post.title)}</span></div><article class="post-detail"><span class="section-kicker">FOOD STORIES</span><h1>${escapeHtml(post.title)}</h1><div class="post-byline"><span class="avatar">${escapeHtml(post.author.slice(0, 1))}</span><span>${escapeHtml(post.author)}<small>${dateLabel(post.createdAt)}</small></span></div><div class="rich-content">${postMarkup(post)}</div><div class="post-associated"><span>${icon('pin', 18)} ${escapeHtml(canteen?.name || '食堂')} · ${escapeHtml(shop?.name || '店铺')}</span>${shop ? `<button class="text-action" data-shop="${shop.id}">查看店铺 ${icon('arrow', 16)}</button>` : ''}</div>${post.ownerId === state.actorId ? `<button class="quiet-button own-post-delete" data-action="delete-own" data-kind="post" data-id="${post.id}">删除我的帖子</button>` : ''}</article><div class="post-comments">${commentSection('post', post.id)}</div></main>`;
+  return `<main class="wrap post-detail-page"><div class="breadcrumb"><button data-view="posts">美食贴</button>${icon('chevron', 14)}<span>${escapeHtml(post.title)}</span></div><article class="post-detail"><span class="section-kicker">FOOD STORIES</span><h1>${escapeHtml(post.title)}</h1><div class="post-byline"><span class="avatar">${escapeHtml(post.author.slice(0, 1))}</span><span>${escapeHtml(post.author)}<small>${dateLabel(post.createdAt)}</small></span></div><div class="rich-content">${postMarkup(post)}</div><div class="post-associated"><span>${icon('pin', 18)} ${escapeHtml(canteen?.name || '食堂')} · ${escapeHtml(shop?.name || '店铺')}</span>${shop ? `<button class="text-action" data-shop="${shop.id}">查看店铺 ${icon('arrow', 16)}</button>` : ''}</div>${reactionButtons('post', post)}${post.ownerId === state.actorId ? `<button class="quiet-button own-post-delete" data-action="delete-own" data-kind="post" data-id="${post.id}">删除我的帖子</button>` : ''}</article><div class="post-comments">${commentSection('post', post.id)}</div></main>`;
 }
 
 function postModal() {
   const shops = activeShops();
-  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal post-editor-modal" role="dialog" aria-modal="true" aria-label="发美食贴" data-stop><div class="modal-head"><div><span class="section-kicker">FOOD STORIES</span><h2>发美食贴</h2><p>选好店铺，再分享你的发现。</p></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div>${shops.length ? `<form id="post-form" class="modal-form"><label>关联店铺<select name="shopId" required><option value="">请选择店铺</option>${shops.map((shop) => `<option value="${shop.id}" ${shop.id === state.shopId ? 'selected' : ''}>${escapeHtml(activeCanteens().find((canteen) => canteen.id === shop.canteenId)?.name || '')} · ${escapeHtml(shop.name)}</option>`).join('')}</select></label><label>标题<input name="title" maxlength="80" required placeholder="这餐有什么值得分享？" /></label><div class="rich-editor-wrap"><span class="editor-label">正文</span><div class="editor-toolbar" role="toolbar" aria-label="文字格式"><button type="button" data-action="format-editor" data-command="bold" aria-label="加粗"><b>B</b></button><button type="button" data-action="format-editor" data-command="italic" aria-label="斜体"><i>I</i></button><button type="button" data-action="format-editor" data-command="underline" aria-label="下划线"><u>U</u></button><button type="button" data-action="format-editor" data-command="heading" aria-label="小标题">H2</button><button type="button" data-action="format-editor" data-command="list" aria-label="无序列表">☷</button><label class="editor-image-control">${icon('image', 17)} 添加图片<input id="post-inline-image" type="file" accept="image/png,image/jpeg,image/webp" /></label></div><div id="post-editor" class="rich-editor" contenteditable="true" role="textbox" aria-label="帖子正文" aria-multiline="true" data-placeholder="写下味道、感受或你的发现…"></div><small>支持加粗、斜体、小标题、列表和正文插图；最多 3 张，大图自动压缩到 900KB 内。</small></div><div class="form-identity">以 <b>${escapeHtml(actor()?.name || '')}</b> 身份发布</div><div class="form-notice">${icon('shield', 17)} 帖子经过演示屏蔽词筛选，内容保存在${storageName()}。</div><button class="button primary full" type="submit">发布美食贴</button></form>` : `<div class="post-empty-note">还没有已收录店铺。先到「一起共建」申请添加店铺，管理员确认后即可关联发帖。</div>`}</div></div>`;
+  const selected = shops.find((shop) => shop.id === state.modal?.selectedShopId);
+  const selectedName = selected ? `${activeCanteens().find((canteen) => canteen.id === selected.canteenId)?.name || '食堂'} · ${selected.name}` : '';
+  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal post-editor-modal" role="dialog" aria-modal="true" aria-label="发美食贴" data-stop><div class="modal-head"><div><span class="section-kicker">FOOD STORIES</span><h2>发美食贴</h2><p>选好店铺，再分享你的发现。</p></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div>${shops.length ? `<form id="post-form" class="modal-form"><div class="shop-picker"><label for="post-shop-search">关联店铺</label><div class="shop-picker-input">${icon('search', 18)}<input id="post-shop-search" type="search" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="post-shop-options" placeholder="搜索店铺或食堂" value="${escapeHtml(selectedName)}" /></div><input id="post-shop-id" name="shopId" type="hidden" value="${escapeHtml(selected?.id || '')}" /><div id="post-shop-options" class="shop-picker-options" role="listbox" hidden></div><small id="post-shop-hint">输入名称查找，点击结果关联店铺</small></div><label>标题<input name="title" maxlength="80" required placeholder="这餐有什么值得分享？" /></label><div class="rich-editor-wrap"><span class="editor-label">正文</span><div class="editor-toolbar" role="toolbar" aria-label="文字格式"><button type="button" data-action="format-editor" data-command="bold" aria-label="加粗"><b>B</b></button><button type="button" data-action="format-editor" data-command="italic" aria-label="斜体"><i>I</i></button><button type="button" data-action="format-editor" data-command="underline" aria-label="下划线"><u>U</u></button><button type="button" data-action="format-editor" data-command="heading" aria-label="小标题">H2</button><button type="button" data-action="format-editor" data-command="list" aria-label="无序列表">☷</button><label class="editor-image-control">${icon('image', 17)} 添加图片<input id="post-inline-image" type="file" accept="image/png,image/jpeg,image/webp" /></label></div><div id="post-editor" class="rich-editor" contenteditable="true" role="textbox" aria-label="帖子正文" aria-multiline="true" data-placeholder="写下味道、感受或你的发现…"></div><small>支持加粗、斜体、小标题、列表和正文插图；最多 3 张，大图自动压缩到 900KB 内。</small></div><div class="form-identity">以 <b>${escapeHtml(actor()?.name || '')}</b> 身份发布</div><div class="form-notice">${icon('shield', 17)} 帖子经过演示屏蔽词筛选，内容保存在${storageName()}。</div><button class="button primary full" type="submit">发布美食贴</button></form>` : `<div class="post-empty-note">还没有已收录店铺。先到「一起共建」申请添加店铺，管理员确认后即可关联发帖。</div>`}</div></div>`;
 }
 
 function adminView() {
@@ -380,7 +395,13 @@ function galleryModal() {
   const images = canteen ? canteenPhotos(canteen) : dish ? dishImages(shop, dish) : shop ? shopImages(shop) : [];
   const canteenId = canteen?.id || shop?.canteenId || '';
   const addType = canteen ? 'canteen-photo' : 'photo';
-  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal gallery-modal" role="dialog" aria-modal="true" aria-label="图片展示" data-stop><div class="modal-head"><div><span class="section-kicker">PHOTO GALLERY</span><h2>${escapeHtml(canteen?.name || dish?.name || shop?.name || '图片')} · 图片</h2><p>共 ${images.length} 张，点击窗口外空白处或右上角关闭。</p></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div><div class="gallery-grid">${images.map((photo) => `<figure><img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.caption)}" /><figcaption>${escapeHtml(photo.caption)}</figcaption>${photo.id && photo.ownerId === state.actorId ? `<button class="gallery-delete" data-action="delete-own" data-kind="photo" data-id="${photo.id}">删除我的图片</button>` : ''}</figure>`).join('')}<button class="gallery-add" data-action="open-contribution" data-type="${addType}" data-photo-kind="${dish ? 'dish' : ''}" data-canteen-id="${canteenId}" data-shop-id="${shop?.id || ''}" data-dish-id="${dish?.id || ''}">${icon('plus', 30)}<b>添加图片</b><small>申请后由管理员审核</small></button></div></div></div>`;
+  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal gallery-modal" role="dialog" aria-modal="true" aria-label="图片展示" data-stop><div class="modal-head"><div><span class="section-kicker">PHOTO GALLERY</span><h2>${escapeHtml(canteen?.name || dish?.name || shop?.name || '图片')} · 图片</h2><p>共 ${images.length} 张，点击图片放大；点击窗口外空白处或右上角关闭。</p></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div><div class="gallery-grid">${images.map((photo) => `<figure>${photoOpenButton(photo)}<figcaption>${escapeHtml(photo.caption)}<small>上传者：${escapeHtml(uploaderName(photo.ownerId, photo.author))}</small></figcaption>${photo.id && photo.ownerId === state.actorId ? `<button class="gallery-delete" data-action="delete-own" data-kind="photo" data-id="${photo.id}">删除我的图片</button>` : ''}</figure>`).join('')}<button class="gallery-add" data-action="open-contribution" data-type="${addType}" data-photo-kind="${dish ? 'dish' : ''}" data-canteen-id="${canteenId}" data-shop-id="${shop?.id || ''}" data-dish-id="${dish?.id || ''}">${icon('plus', 30)}<b>添加图片</b><small>申请后由管理员审核</small></button></div></div></div>`;
+}
+
+function lightbox() {
+  if (!state.lightbox) return '';
+  const { url, caption, uploader } = state.lightbox;
+  return `<div class="lightbox-backdrop" data-action="close-lightbox"><div class="lightbox-dialog" role="dialog" aria-modal="true" aria-label="放大查看图片" data-stop><button class="lightbox-close" data-action="close-lightbox" aria-label="关闭图片">${icon('close', 22)}</button><img src="${escapeHtml(url)}" alt="${escapeHtml(caption)}" /><div class="lightbox-caption"><strong>${escapeHtml(caption)}</strong><span>上传者：${escapeHtml(uploader)}</span></div></div></div>`;
 }
 
 function canteenPhotosModal() {
@@ -390,8 +411,8 @@ function canteenPhotosModal() {
 }
 
 function render() {
-  root.innerHTML = `${header()}${state.notice ? `<div class="toast" role="status">${escapeHtml(state.notice)}<button data-action="dismiss-notice" aria-label="关闭提示">${icon('close', 15)}</button></div>` : ''}${state.view === 'home' ? home() : state.view === 'directory' ? directoryView() : state.view === 'posts' ? postsView() : state.view === 'post-detail' ? postDetailView() : state.view === 'rules' ? rulesView() : state.view === 'canteen' ? canteenView() : state.view === 'shop' ? shopView() : state.view === 'dish' ? dishView() : state.view === 'contribute' ? contributeView() : state.view === 'admin' && actor()?.role === 'admin' ? adminView() : futureView()}${footer()}${profileSidebar()}${modal()}`;
-  document.body.classList.toggle('modal-open', Boolean(state.modal || state.profileOpen));
+  root.innerHTML = `${header()}${state.notice ? `<div class="toast" role="status">${escapeHtml(state.notice)}<button data-action="dismiss-notice" aria-label="关闭提示">${icon('close', 15)}</button></div>` : ''}${state.view === 'home' ? home() : state.view === 'directory' ? directoryView() : state.view === 'posts' ? postsView() : state.view === 'post-detail' ? postDetailView() : state.view === 'rules' ? rulesView() : state.view === 'canteen' ? canteenView() : state.view === 'shop' ? shopView() : state.view === 'dish' ? dishView() : state.view === 'contribute' ? contributeView() : state.view === 'admin' && actor()?.role === 'admin' ? adminView() : futureView()}${footer()}${profileSidebar()}${modal()}${lightbox()}`;
+  document.body.classList.toggle('modal-open', Boolean(state.modal || state.profileOpen || state.lightbox));
 }
 
 async function refresh() {
@@ -407,11 +428,35 @@ function showNotice(message) {
   root.insertAdjacentHTML('afterbegin', `<div class="toast" role="status">${escapeHtml(message)}<button data-action="dismiss-notice" aria-label="关闭提示">${icon('close', 15)}</button></div>`);
   window.setTimeout(() => { if (state.notice === message) { state.notice = ''; root.querySelector('.toast')?.remove(); } }, 4200);
 }
-function go(view) { state.view = view; state.modal = null; state.profileOpen = false; state.query = ''; window.scrollTo({ top: 0, behavior: 'smooth' }); render(); }
+function go(view) { state.view = view; state.modal = null; state.lightbox = null; state.profileOpen = false; state.query = ''; window.scrollTo({ top: 0, behavior: 'smooth' }); render(); }
+
+function fuzzyMatch(text, query) {
+  const haystack = text.toLocaleLowerCase();
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return true;
+  if (haystack.includes(needle)) return true;
+  let at = 0;
+  for (const character of haystack) if (character === needle[at]) at++;
+  return at === needle.length;
+}
+function updateShopOptions(query = '') {
+  const list = root.querySelector('#post-shop-options');
+  const input = root.querySelector('#post-shop-search');
+  if (!list || !input) return;
+  const matches = activeShops().map((shop) => ({ shop, canteen: activeCanteens().find((entry) => entry.id === shop.canteenId) })).filter(({ shop, canteen }) => fuzzyMatch(`${canteen?.name || ''} ${shop.name} ${shopTags(shop).join(' ')}`, query)).slice(0, 30);
+  list.innerHTML = matches.length ? matches.map(({ shop, canteen }) => `<button type="button" role="option" data-action="pick-post-shop" data-id="${shop.id}" aria-selected="${shop.id === root.querySelector('#post-shop-id')?.value}"><b>${escapeHtml(shop.name)}</b><small>${escapeHtml(canteen?.name || '食堂')} · ${escapeHtml(state.data.campuses.find((campus) => campus.id === canteen?.campusId)?.name || '校区')}</small></button>`).join('') : '<div class="shop-picker-empty">没有找到店铺，试试食堂名称或其他关键词</div>';
+  list.hidden = false; input.setAttribute('aria-expanded', 'true');
+}
 
 root.addEventListener('mousedown', (event) => { if (event.target.closest('[data-action="format-editor"]')) event.preventDefault(); });
+root.addEventListener('focusin', (event) => { if (event.target.id === 'post-shop-search') updateShopOptions(event.target.value === root.querySelector('#post-shop-search')?.defaultValue ? '' : event.target.value); });
 
 root.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.lightbox) { state.lightbox = null; render(); return; }
+  if (event.target.id === 'post-shop-search') {
+    if (event.key === 'ArrowDown') { event.preventDefault(); updateShopOptions(event.target.value); root.querySelector('#post-shop-options button')?.focus(); return; }
+    if (event.key === 'Escape') { root.querySelector('#post-shop-options').hidden = true; event.target.setAttribute('aria-expanded', 'false'); return; }
+  }
   if (event.key === 'Escape' && state.profileOpen) { state.profileOpen = false; render(); return; }
   if (!['Enter', ' '].includes(event.key)) return;
   const card = event.target.closest('.dish-row[data-dish], .post-card[data-post]');
@@ -421,6 +466,10 @@ root.addEventListener('keydown', (event) => {
 });
 
 root.addEventListener('click', async (event) => {
+  if (event.target.matches('.rich-content img')) {
+    const post = state.data.posts.find((entry) => entry.id === state.postId);
+    state.lightbox = { url: event.target.src, caption: event.target.alt || '帖子图片', uploader: uploaderName(post?.ownerId, post?.author) }; render(); return;
+  }
   const target = event.target.closest('[data-action], [data-view], [data-campus], [data-canteen], [data-shop], [data-dish], [data-post]');
   if (!target) return;
   if (target.matches('[data-stop]')) return;
@@ -431,6 +480,9 @@ root.addEventListener('click', async (event) => {
   if (target.dataset.dish) { state.dishId = target.dataset.dish; state.shopId = target.dataset.shopId; go('dish'); return; }
   if (target.dataset.post) { state.postId = target.dataset.post; go('post-detail'); return; }
   const command = target.dataset.action;
+  if (command === 'open-lightbox') { const photo = target.querySelector('img'); state.lightbox = { url: photo?.src || '', caption: target.dataset.caption || photo?.alt || '图片', uploader: uploaderName(target.dataset.ownerId, target.dataset.uploader) }; render(); return; }
+  if (command === 'close-lightbox') { if (event.target.closest('[data-stop]') && target.classList.contains('lightbox-backdrop')) return; state.lightbox = null; render(); return; }
+  if (command === 'pick-post-shop') { const shop = activeShops().find((entry) => entry.id === target.dataset.id); const canteen = activeCanteens().find((entry) => entry.id === shop?.canteenId); if (!shop) return; state.modal.selectedShopId = shop.id; root.querySelector('#post-shop-id').value = shop.id; root.querySelector('#post-shop-search').value = `${canteen?.name || '食堂'} · ${shop.name}`; root.querySelector('#post-shop-options').hidden = true; root.querySelector('#post-shop-search').setAttribute('aria-expanded', 'false'); return; }
   if (command === 'toggle-profile') { state.profileOpen = !state.profileOpen; state.profileTab = 'overview'; render(); return; }
   if (command === 'close-profile') { if (event.target.closest('[data-stop]') && target.classList.contains('profile-backdrop')) return; state.profileOpen = false; render(); return; }
   if (command === 'profile-tab') { state.profileTab = target.dataset.tab; render(); return; }
@@ -438,7 +490,7 @@ root.addEventListener('click', async (event) => {
   if (command === 'dismiss-notice') { state.notice = ''; root.querySelector('.toast')?.remove(); return; }
   if (command === 'go-contribute') { go('contribute'); return; }
   if (command === 'scroll-how') { document.querySelector('#how-it-works')?.scrollIntoView({ behavior: 'smooth' }); return; }
-  if (command === 'open-post') { state.modal = { kind: 'post' }; render(); return; }
+  if (command === 'open-post') { state.modal = { kind: 'post', selectedShopId: state.view === 'shop' || state.view === 'dish' ? state.shopId : null }; render(); return; }
   if (command === 'open-tags') { state.modal = { kind: 'tags', shopId: target.dataset.shopId }; render(); return; }
   if (command === 'format-editor') {
     const editor = root.querySelector('#post-editor');
@@ -458,6 +510,7 @@ root.addEventListener('click', async (event) => {
   if (command === 'review') { state.modal = { kind: 'review', id: target.dataset.id, decision: target.dataset.decision }; render(); return; }
   if (command === 'remove-canteen' || command === 'remove-shop' || command === 'remove-content' || command === 'reset-preview') { state.modal = { kind: 'confirm', action: command, id: target.dataset.id, shopId: target.dataset.shopId, contentKind: target.dataset.kind }; render(); return; }
   try {
+    if (command === 'react') { await repo.setReaction(target.dataset.kind, target.dataset.id, state.actorId, target.dataset.stance); await refresh(); return; }
     if (command === 'restore-entry') { await repo.restoreEntry(target.dataset.kind, target.dataset.id); await refresh(); showNotice('资料已恢复。'); return; }
     if (command === 'fix-provisional') { await repo.fixProvisional(target.dataset.id, state.actorId); await refresh(); showNotice('已固定收录。'); return; }
     if (command === 'revoke-provisional') { await repo.revokeProvisional(target.dataset.id, state.actorId); await refresh(); showNotice('暂示已撤销。'); return; }
@@ -480,6 +533,7 @@ root.addEventListener('click', async (event) => {
 });
 
 root.addEventListener('input', (event) => {
+  if (event.target.id === 'post-shop-search') { root.querySelector('#post-shop-id').value = ''; state.modal.selectedShopId = null; updateShopOptions(event.target.value); return; }
   if (event.target.id === 'search') {
     state.query = event.target.value;
     const grid = root.querySelector('.canteen-grid');
@@ -491,6 +545,7 @@ root.addEventListener('input', (event) => {
 });
 
 root.addEventListener('change', async (event) => {
+  if (event.target.id === 'comment-sort') { state.commentSort = event.target.value; render(); return; }
   if (event.target.id === 'demo-actor') {
     state.actorId = event.target.value;
     localStorage.setItem('canteen-guide-demo-actor', state.actorId);
@@ -577,6 +632,7 @@ root.addEventListener('submit', async (event) => {
       delete values.photoFile;
       values.actorId = state.actorId;
       if (form.id === 'post-form') {
+        if (!values.shopId) throw new Error('请从搜索结果中选择关联店铺。');
         const editor = form.querySelector('#post-editor');
         values.contentHtml = sanitizeRichHtml(editor.innerHTML);
         values.body = plainTextFromRichHtml(values.contentHtml);
@@ -603,7 +659,7 @@ root.addEventListener('submit', async (event) => {
     if (form.id === 'canteen-photo-form') {
       const file = values.photoFile;
       if (!file || !file.size) throw new Error('请选择图片。');
-      await repo.saveCanteenPhoto({ canteenId: values.canteenId, photo: await imageAsDataUrl(file) });
+      await repo.saveCanteenPhoto({ canteenId: values.canteenId, photo: await imageAsDataUrl(file), actorId: state.actorId });
       state.modal = { kind: 'canteen-photos', id: values.canteenId }; await refresh(); showNotice('食堂照片已保存。'); return;
     }
     if (form.id === 'review-form') {
@@ -616,8 +672,8 @@ root.addEventListener('submit', async (event) => {
           values.photo = await imageAsDataUrl(values.photoFile);
       }
       delete values.photoFile;
-      if (values.contentKind === 'dish') await repo.saveDish({ ...values, id: values.entryId });
-      else await repo.savePhoto({ ...values, id: values.entryId });
+      if (values.contentKind === 'dish') await repo.saveDish({ ...values, id: values.entryId, actorId: state.actorId });
+      else await repo.savePhoto({ ...values, id: values.entryId, actorId: state.actorId });
       state.modal = { kind: 'shop-content', shopId }; await refresh(); showNotice('店铺资料已保存。'); return;
     }
     const screening = screenComment(values.body);

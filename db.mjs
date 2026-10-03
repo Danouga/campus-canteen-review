@@ -6,7 +6,7 @@ const allowedActions = new Set([
   'submitContribution', 'reviewContribution', 'fixProvisional', 'revokeProvisional',
   'expireProvisional', 'saveCampus', 'saveCanteen', 'saveShop', 'removeEntry',
   'restoreEntry', 'saveDish', 'savePhoto', 'saveCanteenPhoto', 'removeCanteenPhoto', 'removeShopContent', 'addComment',
-  'submitPost', 'deleteOwnContent', 'markReviewMessageRead', 'resetPreview'
+  'submitPost', 'setReaction', 'deleteOwnContent', 'markReviewMessageRead', 'resetPreview'
 ]);
 
 class MemoryStorage {

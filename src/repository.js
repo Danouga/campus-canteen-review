@@ -8,7 +8,7 @@ export const initialState = () => ({
     { id: 'campus-a', name: '校区一', note: '名称待设置' },
     { id: 'campus-b', name: '校区二', note: '名称待设置' }
   ],
-  canteens: [], shops: [], contributions: [], comments: [], posts: []
+  canteens: [], shops: [], contributions: [], comments: [], posts: [], reactions: []
 });
 
 const id = () => globalThis.crypto?.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -40,6 +40,7 @@ function read(storage) {
     const value = JSON.parse(storage.getItem(KEY));
     if (value && Array.isArray(value.campuses) && Array.isArray(value.canteens)) {
       value.posts ||= [];
+      value.reactions ||= [];
       return value;
     }
   } catch { /* Invalid preview data resets to the empty state. */ }
@@ -238,7 +239,7 @@ export class LocalRepository {
     const shop = data.shops.find((entry) => entry.id === input.shopId && entry.status === 'active');
     if (!shop) throw new Error('店铺不存在。');
     const existing = input.id && shop.dishes.find((entry) => entry.id === input.id);
-    const value = { id: existing?.id || id(), name: assertText(input.name, '菜品名称', 60), price: String(input.price || '').trim().slice(0, 20), note: String(input.note || '').trim().slice(0, 200), photo: input.photo ? assertPhoto(input.photo) : existing?.photo || '', status: 'active' };
+    const value = { id: existing?.id || id(), name: assertText(input.name, '菜品名称', 60), price: String(input.price || '').trim().slice(0, 20), note: String(input.note || '').trim().slice(0, 200), photo: input.photo ? assertPhoto(input.photo) : existing?.photo || '', photoOwnerId: input.photo ? requireAdmin(input.actorId).id : existing?.photoOwnerId || null, status: 'active' };
     if (existing) Object.assign(existing, value); else shop.dishes.push(value);
     shop.updatedAt = new Date().toISOString(); write(data, this.storage);
   }
@@ -254,7 +255,7 @@ export class LocalRepository {
     if (photoKind === 'dish' && !dish) throw new Error('请选择菜品。');
     const url = input.photo ? assertPhoto(input.photo) : existing?.url;
     if (!url) throw new Error('请选择图片。');
-    const value = { id: existing?.id || id(), photoKind, dishId: photoKind === 'dish' ? dish.id : null, caption: photoKind === 'dish' ? dish.name : '店铺门面', url, status: 'active' };
+    const value = { id: existing?.id || id(), photoKind, dishId: photoKind === 'dish' ? dish.id : null, caption: photoKind === 'dish' ? dish.name : '店铺门面', url, ownerId: input.photo ? requireAdmin(input.actorId).id : existing?.ownerId || null, status: 'active' };
     if (existing) Object.assign(existing, value); else shop.photos.push(value);
     shop.updatedAt = new Date().toISOString(); write(data, this.storage);
   }
@@ -267,7 +268,7 @@ export class LocalRepository {
     const existing = input.id && canteen.photos.find((entry) => entry.id === input.id);
     const url = input.photo ? assertPhoto(input.photo) : existing?.url;
     if (!url) throw new Error('请选择图片。');
-    const value = { id: existing?.id || id(), url, caption: '食堂照片', status: 'active' };
+    const value = { id: existing?.id || id(), url, caption: '食堂照片', ownerId: input.photo ? requireAdmin(input.actorId).id : existing?.ownerId || null, status: 'active' };
     if (existing) Object.assign(existing, value); else canteen.photos.push(value);
     canteen.updatedAt = new Date().toISOString(); write(data, this.storage);
   }
@@ -309,6 +310,22 @@ export class LocalRepository {
     const screening = screenComment(`${input.title} ${input.body}`);
     if (!screening.allowed) throw new Error(screening.reason);
     data.posts.unshift({ id: id(), shopId: input.shopId, ownerId: actor.id, author: actor.name, title: assertText(input.title, '帖子标题', 80), body: assertText(input.body, '帖子内容', 5000), contentHtml: String(input.contentHtml || '').slice(0, 4_000_000), photo: input.photo ? assertPhoto(input.photo) : '', status: 'active', createdAt: new Date().toISOString() });
+    write(data, this.storage);
+  }
+
+  async setReaction(targetKind, targetId, actorId, stance) {
+    const actor = requireActor(actorId);
+    if (!['agree', 'disagree'].includes(stance)) throw new Error('请选择赞同或反对。');
+    const data = read(this.storage);
+    const collection = targetKind === 'comment' ? data.comments : targetKind === 'post' ? data.posts : targetKind === 'contribution' ? data.contributions : null;
+    const item = collection?.find((entry) => entry.id === targetId);
+    if (!item || (targetKind === 'contribution' ? item.status !== 'provisional' : item.status === 'archived' || item.status === 'hidden')) throw new Error('这条内容暂时不能表态。');
+    if (item.ownerId === actor.id) throw new Error('不能给自己发布的内容表态。');
+    const existing = data.reactions.find((entry) => entry.targetKind === targetKind && entry.targetId === targetId && entry.actorId === actor.id);
+    if (existing) {
+      if (existing.stance === stance) data.reactions.splice(data.reactions.indexOf(existing), 1);
+      else { existing.stance = stance; existing.updatedAt = new Date().toISOString(); }
+    } else data.reactions.push({ targetKind, targetId, actorId: actor.id, stance, updatedAt: new Date().toISOString() });
     write(data, this.storage);
   }
 

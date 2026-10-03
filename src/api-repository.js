@@ -42,6 +42,7 @@ export class ApiRepository {
   removeShopContent(kind, shopId, id) { return this.invoke('removeShopContent', kind, shopId, id); }
   addComment(targetKind, targetId, actorId, body) { return this.invoke('addComment', targetKind, targetId, actorId, body); }
   submitPost(input) { return this.invoke('submitPost', input); }
+  setReaction(targetKind, targetId, actorId, stance) { return this.invoke('setReaction', targetKind, targetId, actorId, stance); }
   deleteOwnContent(kind, id, actorId) { return this.invoke('deleteOwnContent', kind, id, actorId); }
   resetPreview() { return this.invoke('resetPreview'); }
 }
