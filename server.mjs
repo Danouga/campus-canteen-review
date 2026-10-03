@@ -61,8 +61,9 @@ createServer(async (request, response) => {
     return;
   }
   if (request.method !== 'GET') { response.writeHead(405).end('Method Not Allowed'); return; }
-  if (pathname !== '/' && !/^\/(?:index\.html|src\/[a-z0-9-]+\.(?:js|css))$/.test(pathname)) { response.writeHead(404).end('Not Found'); return; }
-  const file = resolve(root, `.${pathname === '/' ? '/index.html' : pathname}`);
+  const pageRoute = /^\/(?:canteens\/[^/]+|shops\/[^/]+(?:\/dishes\/[^/]+)?|posts(?:\/[^/]+)?|directory(?:\/[^/]+)?|contribute|future|rules|admin)$/.test(pathname);
+  if (pathname !== '/' && !pageRoute && !/^\/(?:index\.html|src\/[a-z0-9-]+\.(?:js|css))$/.test(pathname)) { response.writeHead(404).end('Not Found'); return; }
+  const file = resolve(root, `.${pathname === '/' || pageRoute ? '/index.html' : pathname}`);
   if (file !== root && !file.startsWith(root + sep)) {
     response.writeHead(403).end('Forbidden');
     return;

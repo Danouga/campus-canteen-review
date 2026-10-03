@@ -6,7 +6,7 @@ const allowedActions = new Set([
   'submitContribution', 'reviewContribution', 'fixProvisional', 'revokeProvisional',
   'expireProvisional', 'saveCampus', 'saveCanteen', 'saveShop', 'removeEntry',
   'restoreEntry', 'saveDish', 'savePhoto', 'saveCanteenPhoto', 'removeCanteenPhoto', 'removeShopContent', 'addComment',
-  'submitPost', 'setReaction', 'deleteOwnContent', 'markReviewMessageRead', 'resetPreview'
+  'submitPost', 'setReaction', 'moderateContent', 'resolveContested', 'deleteOwnContent', 'markReviewMessageRead', 'resetPreview'
 ]);
 
 class MemoryStorage {
@@ -34,7 +34,7 @@ export async function connectDatabase(config) {
   return {
     async snapshot() {
       const [rows] = await pool.query('SELECT payload FROM app_state WHERE id = 1');
-      return JSON.parse(rows[0].payload);
+      return new LocalRepository(new MemoryStorage(rows[0].payload)).snapshot();
     },
     async action(method, args) {
       if (!allowedActions.has(method) || !Array.isArray(args) || args.length > 4) throw new Error('操作无效。');

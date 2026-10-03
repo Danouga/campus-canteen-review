@@ -6,7 +6,7 @@ import { imageAsDataUrl } from './image-compression.js';
 const repo = createRepository();
 const root = document.querySelector('#app');
 const savedActorId = localStorage.getItem('canteen-guide-demo-actor');
-const state = { data: null, actorId: demoUsers.some((user) => user.id === savedActorId) ? savedActorId : 'demo-author', campusId: 'campus-a', view: 'home', canteenId: null, shopId: null, dishId: null, postId: null, query: '', modal: null, lightbox: null, commentSort: 'newest', profileOpen: false, profileTab: 'overview', notice: '', storageMode: 'local' };
+const state = { data: null, actorId: demoUsers.some((user) => user.id === savedActorId) ? savedActorId : 'demo-author', campusId: 'campus-a', view: 'home', canteenId: null, shopId: null, dishId: null, postId: null, query: '', modal: null, lightbox: null, commentSort: 'newest', adminCanteenId: null, profileOpen: false, profileTab: 'overview', notice: '', storageMode: 'local' };
 
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 const dateLabel = (value) => value ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '—';
@@ -80,7 +80,7 @@ function campusTabs() {
 }
 
 function home() {
-  const totalShops = activeShops().length;
+  const totalShops = activeShops().filter((shop) => currentStatus(shop, 'shop') !== 'unlisted').length;
   return `<main>
     <section class="hero wrap"><div class="hero-copy"><span class="eyebrow"><span class="eyebrow-line"></span> A LITTLE GUIDE TO CAMPUS FOOD</span><h1>好味道，<br><em>一起慢慢发现。</em></h1><p>从两校区的食堂开始，记录每一家值得认识的店。资料可以由你补充，也会经过管理员确认。</p><div class="hero-actions"><button class="button primary" data-view="directory">${icon('bowl', 19)} 浏览食堂</button><button class="button subtle" data-action="scroll-how">了解共建方式 ${icon('arrow', 18)}</button></div><div class="hero-metrics"><div><strong>02</strong><span>个校区</span></div><i></i><div><strong>${String(activeCanteens().length).padStart(2, '0')}</strong><span>个已收录食堂</span></div><i></i><div><strong>${String(totalShops).padStart(2, '0')}</strong><span>家已收录店铺</span></div></div></div><div class="hero-art" aria-hidden="true"><span class="art-ring ring-one"></span><span class="art-ring ring-two"></span><span class="art-orbit orbit-one"></span><span class="art-orbit orbit-two"></span><div class="plate"><div class="plate-inner"><span class="rice-grain grain-1"></span><span class="rice-grain grain-2"></span><span class="rice-grain grain-3"></span><span class="rice-grain grain-4"></span><span class="rice-grain grain-5"></span><span class="leaf-piece leaf-a"></span><span class="leaf-piece leaf-b"></span><span class="leaf-piece leaf-c"></span><span class="egg"></span><span class="carrot carrot-a"></span><span class="carrot carrot-b"></span><span class="carrot carrot-c"></span></div></div><div class="art-note"><span class="note-icon">${icon('spark', 18)}</span><span>下一家好店<br><b>也许由你发现</b></span></div></div></section>
     <section class="directory-teaser wrap"><div><span class="section-kicker">EXPLORE THE CANTEENS</span><h2>两校区食堂，单独逛一逛。</h2><p>按校区浏览已收录食堂，也可以为还空着的位置申请补充。</p></div><button class="button outline" data-view="directory">进入食堂展示 ${icon('arrow', 18)}</button></section>
@@ -97,7 +97,7 @@ function directoryView() {
 function addCanteenCard() { return `<button class="canteen-card add-canteen-card" data-action="open-contribution" data-type="canteen">${icon('plus', 31)}<strong>添加食堂</strong><span>知道一间还未收录的食堂？<br>从这里申请补充。</span></button>`; }
 
 function canteenCard(item) {
-  const count = activeShops().filter((shop) => shop.canteenId === item.id).length;
+  const count = activeShops().filter((shop) => shop.canteenId === item.id && currentStatus(shop, 'shop') !== 'unlisted').length;
   const photos = canteenPhotos(item);
   const cover = photos.length ? photos[[...item.id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % photos.length] : null;
   return `<button class="canteen-card" data-canteen="${item.id}"><span class="card-illustration">${cover ? `<img src="${escapeHtml(cover.url)}" alt="${escapeHtml(item.name)}照片" />` : icon('bowl', 42)}</span><span class="card-content"><span class="card-label">${escapeHtml(campus()?.name)} · 食堂</span><strong>${escapeHtml(item.name)}</strong><span class="card-meta">${icon('clock', 16)} ${escapeHtml(item.hours || '营业时间待补充')}</span><span class="card-meta">${icon('pin', 16)} ${escapeHtml(item.location || '位置待补充')}</span><span class="card-bottom"><span>${count} 家店铺</span><span class="circle-arrow">${icon('arrow', 18)}</span></span></span></button>`;
@@ -109,34 +109,46 @@ function emptyCanteen() {
   return `<div class="empty-canteen"><div class="empty-symbol">${icon('bowl', 40)}<span>${icon('plus', 20)}</span></div><span class="empty-kicker">A FRESH START</span><h3>${state.query ? '还没有找到这间食堂' : '这一页，等你写下第一笔。'}</h3><p>${state.query ? '换个关键词试试，或申请添加你知道的食堂。' : `${escapeHtml(campus()?.name)}还没有收录食堂。知道一间？花一分钟告诉我们。`}</p><button class="button outline" data-action="open-contribution" data-type="canteen">${icon('plus', 18)} 申请添加食堂</button></div>`;
 }
 
-function breadcrumb(parts) { return `<div class="breadcrumb"><button data-view="directory">食堂展示</button>${parts.map((item) => ` ${icon('chevron', 14)} <span>${escapeHtml(item)}</span>`).join('')}</div>`; }
+function breadcrumb({ campusId, canteen, shop, current }) {
+  const campusName = state.data.campuses.find((item) => item.id === campusId)?.name || '校区';
+  return `<div class="breadcrumb"><button data-view="directory">食堂展示</button>${icon('chevron', 14)}<button data-campus="${escapeHtml(campusId)}" data-view="directory">${escapeHtml(campusName)}</button>${canteen ? `${icon('chevron', 14)}${shop ? `<button data-canteen="${canteen.id}">${escapeHtml(canteen.name)}</button>` : `<span>${escapeHtml(canteen.name)}</span>`}` : ''}${shop ? `${icon('chevron', 14)}${current ? `<button data-shop="${shop.id}">${escapeHtml(shop.name)}</button>` : `<span>${escapeHtml(shop.name)}</span>`}` : ''}${current ? `${icon('chevron', 14)}<span>${escapeHtml(current)}</span>` : ''}</div>`;
+}
 
 function canteenView() {
   const item = activeCanteens().find((entry) => entry.id === state.canteenId);
   if (!item) return missingView();
-  const shops = activeShops().filter((shop) => shop.canteenId === item.id);
+  const shops = activeShops().filter((shop) => shop.canteenId === item.id && currentStatus(shop, 'shop') !== 'unlisted');
   const provisional = state.data.contributions.filter((entry) => entry.status === 'provisional' && entry.canteenId === item.id);
+  const fixed = state.data.contributions.filter((entry) => entry.status === 'fixed' && entry.canteenId === item.id);
   const photos = canteenPhotos(item);
-  return `<main class="wrap detail-page">${breadcrumb([campus()?.name || '', item.name])}<div class="detail-hero canteen-detail-head"><div><span class="detail-label">${escapeHtml(campus()?.name)} / CANTEEN</span><h1><button class="title-edit" data-action="open-contribution" data-type="field-update" data-target-kind="canteen" data-field="name" data-canteen-id="${item.id}">${escapeHtml(item.name)} <span>✎</span></button></h1><p>每一家店铺、每一道菜，都可以从这里开始被发现。</p><div class="detail-facts"><button class="fact-edit" data-action="open-contribution" data-type="field-update" data-target-kind="canteen" data-field="hours" data-canteen-id="${item.id}">${icon('clock', 18)} ${escapeHtml(item.hours || '营业时间待补充')} ${icon('edit', 13)}</button><button class="fact-edit" data-action="open-contribution" data-type="field-update" data-target-kind="canteen" data-field="location" data-canteen-id="${item.id}">${icon('pin', 18)} ${escapeHtml(item.location || '位置待补充')} ${icon('edit', 13)}</button></div></div><button class="canteen-detail-art" data-action="open-gallery" data-kind="canteen" data-id="${item.id}" aria-label="查看${escapeHtml(item.name)}的照片">${photos.length ? `<img src="${escapeHtml(photos[0].url)}" alt="${escapeHtml(item.name)}照片" />` : `<span>${icon('image', 42)}<small>添加食堂照片</small></span>`}</button></div>
+  return `<main class="wrap detail-page">${breadcrumb({ campusId: item.campusId, canteen: item })}<div class="detail-hero canteen-detail-head"><div><span class="detail-label">${escapeHtml(campus()?.name)} / CANTEEN</span><h1><button class="title-edit" data-action="open-contribution" data-type="field-update" data-target-kind="canteen" data-field="name" data-canteen-id="${item.id}">${escapeHtml(item.name)} <span>✎</span></button></h1><p>每一家店铺、每一道菜，都可以从这里开始被发现。</p><div class="detail-facts"><button class="fact-edit" data-action="open-contribution" data-type="field-update" data-target-kind="canteen" data-field="hours" data-canteen-id="${item.id}">${icon('clock', 18)} ${escapeHtml(item.hours || '营业时间待补充')} ${icon('edit', 13)}</button><button class="fact-edit" data-action="open-contribution" data-type="field-update" data-target-kind="canteen" data-field="location" data-canteen-id="${item.id}">${icon('pin', 18)} ${escapeHtml(item.location || '位置待补充')} ${icon('edit', 13)}</button></div></div><button class="canteen-detail-art" data-action="open-gallery" data-kind="canteen" data-id="${item.id}" aria-label="查看${escapeHtml(item.name)}的照片">${photos.length ? `<img src="${escapeHtml(photos[0].url)}" alt="${escapeHtml(item.name)}照片" />` : `<span>${icon('image', 42)}<small>添加食堂照片</small></span>`}</button></div>
     <div class="detail-section-head"><div><span class="section-kicker">SHOPS INSIDE</span><h2>这里的店铺 <span class="muted-count">${shops.length}</span></h2></div><button class="button small primary" data-action="open-contribution" data-type="shop" data-canteen-id="${item.id}">${icon('plus', 17)} 申请添加店铺</button></div>
     <div class="shop-grid">${shops.length ? shops.map(shopCard).join('') : `<div class="empty-shop"><span class="empty-icon">${icon('plus', 28)}</span><h3>还没有店铺被收录</h3><p>知道这里有哪些店？点击加号，帮大家补全食堂地图。</p><button class="button outline" data-action="open-contribution" data-type="shop" data-canteen-id="${item.id}">添加第一家店 ${icon('arrow', 17)}</button></div>`}</div>
-    ${provisional.length ? provisionalPanel(provisional) : ''}</main>`;
+    ${provisional.length ? provisionalPanel(provisional) : ''}${fixedPanel(fixed)}</main>`;
 }
 
 function shopTags(item) { const raw = item.tags !== undefined ? item.tags : item.category; return (Array.isArray(raw) ? raw : String(raw || '').split(/[,，、]+/)).map((tag) => String(tag).trim()).filter(Boolean); }
+const statusLabels = { open: '正常营业', temporarily_closed: '暂示闭店', available: '可售', unlisted: '下架' };
+function currentStatus(item, kind) { return item.availability || (kind === 'shop' ? 'open' : 'available'); }
+function proposedStatus(kind, id) { return state.data.contributions.find((item) => item.type === 'status-update' && item.status === 'provisional' && item.targetKind === kind && (kind === 'shop' ? item.shopId === id : item.dishId === id)); }
+function statusBadge(item, kind) { const request = proposedStatus(kind, item.id); const value = request?.requestedStatus || currentStatus(item, kind); return `<span class="availability-badge ${request ? 'proposed' : ''}">${request ? '暂示：' : ''}${statusLabels[value]}</span>`; }
 function tagList(item) { const tags = shopTags(item); return tags.length ? tags.map((tag) => `<span class="shop-tag">${escapeHtml(tag)}</span>`).join('') : '<span class="shop-tag muted">标签待补充</span>'; }
 function tagSummary(item) { return `<button class="shop-tag-summary" data-action="open-tags" data-shop-id="${item.id}" aria-label="查看${escapeHtml(item.name)}的标签">${tagList(item)}</button>`; }
 
 function shopCard(item) {
   const cover = coverForShop(item);
-  return `<button class="shop-card" data-shop="${item.id}"><span class="shop-card-art">${cover ? `<img src="${escapeHtml(cover.url)}" alt="${escapeHtml(cover.caption)}" />` : icon('bowl', 34)}</span><span class="shop-card-body"><span class="shop-tags">${tagList(item)}</span><strong>${escapeHtml(item.name)}</strong><span>${icon('pin', 15)} ${escapeHtml(item.location || '位置待补充')}</span><span class="shop-card-link">查看详情 ${icon('arrow', 17)}</span></span></button>`;
+  return `<button class="shop-card" data-shop="${item.id}"><span class="shop-card-art">${cover ? `<img src="${escapeHtml(cover.url)}" alt="${escapeHtml(cover.caption)}" />` : icon('bowl', 34)}</span><span class="shop-card-body"><span class="shop-tags">${tagList(item)}</span><strong>${escapeHtml(item.name)}</strong>${currentStatus(item, 'shop') !== 'open' || proposedStatus('shop', item.id) ? statusBadge(item, 'shop') : ''}<span>${icon('pin', 15)} ${escapeHtml(item.location || '位置待补充')}</span><span class="shop-card-link">查看详情 ${icon('arrow', 17)}</span></span></button>`;
 }
 
 function shopImages(shop) {
-  const dishes = (shop.dishes || []).filter((dish) => dish.status !== 'archived');
+  const dishes = (shop.dishes || []).filter((dish) => dish.status !== 'archived' && currentStatus(dish, 'dish') !== 'unlisted');
   return [...dishes.filter((dish) => dish.photo).map((dish) => ({ id: null, dishId: dish.id, url: dish.photo, caption: dish.name, ownerId: dish.photoOwnerId || null })), ...(shop.photos || []).filter((photo) => photo.status !== 'archived').map((photo) => ({ id: photo.id, dishId: photo.dishId, url: photo.url, caption: dishes.find((dish) => dish.id === photo.dishId)?.name || photo.caption || shop.name, ownerId: photo.ownerId || null }))];
 }
 function dishImages(shop, dish) { return shopImages(shop).filter((photo) => photo.dishId === dish.id); }
+function samplePhotos(photos, count, key) {
+  const seed = [...`${key}:${new Date().toDateString()}`].reduce((value, character) => (value * 31 + character.charCodeAt(0)) >>> 0, 7);
+  return [...photos].map((photo, index) => ({ photo, score: [...`${photo.id || photo.caption}:${seed}:${index}`].reduce((value, character) => (value * 33 + character.charCodeAt(0)) >>> 0, 1) })).sort((a, b) => a.score - b.score).slice(0, count).map((entry) => entry.photo);
+}
 function coverForShop(shop) {
   const images = shopImages(shop);
   if (!images.length) return null;
@@ -162,7 +174,7 @@ function commentsFor(targetKind, targetId) {
 function commentSection(targetKind, targetId) {
   const comments = commentsFor(targetKind, targetId).sort((a, b) => state.commentSort === 'agreed' ? reactionInfo('comment', b.id).agree - reactionInfo('comment', a.id).agree || Date.parse(b.createdAt) - Date.parse(a.createdAt) : Date.parse(b.createdAt) - Date.parse(a.createdAt));
   const title = targetKind === 'dish' ? '这道菜的评论' : targetKind === 'post' ? '帖子评论' : '评论';
-  return `<section class="detail-block comments-block"><div class="block-head"><div><span class="section-kicker">FROM THE COMMUNITY</span><h2>${title}</h2></div><span class="small-note">${escapeHtml(actor()?.name || '')} · ${storageName()}</span></div><form id="comment-form" class="comment-form" data-target-kind="${targetKind}" data-target-id="${targetId}"><textarea name="body" maxlength="500" required placeholder="写下真实、具体的感受…" aria-label="评论内容"></textarea><div><small>提交前经过演示屏蔽词筛选（${filterVersion}）</small><button class="button small primary" type="submit">发布评论</button></div></form><div class="comment-sort"><label for="comment-sort">评论排序</label><select id="comment-sort"><option value="newest" ${state.commentSort === 'newest' ? 'selected' : ''}>最新发布</option><option value="agreed" ${state.commentSort === 'agreed' ? 'selected' : ''}>赞同最多</option></select></div>${comments.length ? comments.map((entry) => `<article class="comment"><span class="avatar">${escapeHtml(entry.author.slice(0, 1))}</span><div><b>${escapeHtml(entry.author)}</b><time>${dateLabel(entry.createdAt)}</time><p>${escapeHtml(entry.body)}</p>${reactionButtons('comment', entry)}${entry.ownerId === state.actorId ? `<button class="quiet-button" data-action="delete-own" data-kind="comment" data-id="${entry.id}">删除我的评论</button>` : ''}</div></article>`).join('') : '<p class="quiet-empty">还没有评论，欢迎留下第一条。</p>'}</section>`;
+  return `<section class="detail-block comments-block"><div class="block-head"><div><span class="section-kicker">FROM THE COMMUNITY</span><h2>${title}</h2></div><span class="small-note">${escapeHtml(actor()?.name || '')} · ${storageName()}</span></div><form id="comment-form" class="comment-form" data-target-kind="${targetKind}" data-target-id="${targetId}"><textarea name="body" maxlength="500" required placeholder="写下真实、具体的感受…" aria-label="评论内容"></textarea><div><small>提交前经过演示屏蔽词筛选（${filterVersion}）</small><button class="button small primary" type="submit">发布评论</button></div></form><div class="comment-sort"><label for="comment-sort">评论排序</label><select id="comment-sort"><option value="newest" ${state.commentSort === 'newest' ? 'selected' : ''}>最新发布</option><option value="agreed" ${state.commentSort === 'agreed' ? 'selected' : ''}>赞同最多</option></select></div>${comments.length ? comments.map((entry) => `<article class="comment ${entry.status === 'hidden' ? 'folded-content' : ''}"><span class="avatar">${escapeHtml(entry.author.slice(0, 1))}</span><div><b>${escapeHtml(entry.author)}</b><time>${dateLabel(entry.createdAt)}</time>${entry.status === 'hidden' && entry.ownerId !== state.actorId && actor()?.role !== 'admin' ? '<p>这条评论因反对较多已隐藏，等待管理员复核。</p>' : `<p>${escapeHtml(entry.body)}</p>`}${entry.status === 'hidden' ? '<small>内容待复核</small>' : reactionButtons('comment', entry)}${entry.ownerId === state.actorId ? `<button class="quiet-button" data-action="delete-own" data-kind="comment" data-id="${entry.id}">删除我的评论</button>` : ''}</div></article>`).join('') : '<p class="quiet-empty">还没有评论，欢迎留下第一条。</p>'}</section>`;
 }
 
 function shopView() {
@@ -170,15 +182,16 @@ function shopView() {
   if (!item) return missingView();
   const canteen = activeCanteens().find((entry) => entry.id === item.canteenId);
   const comments = state.data.comments.filter((entry) => entry.shopId === item.id);
-  const relatedPosts = (state.data.posts || []).filter((entry) => entry.shopId === item.id && entry.status !== 'archived');
+  const relatedPosts = (state.data.posts || []).filter((entry) => entry.shopId === item.id && !['archived', 'hidden'].includes(entry.status));
   const provisional = state.data.contributions.filter((entry) => entry.status === 'provisional' && entry.shopId === item.id);
-  const visibleDishes = item.dishes.filter((entry) => entry.status !== 'archived');
+  const fixed = state.data.contributions.filter((entry) => entry.status === 'fixed' && entry.shopId === item.id);
+  const visibleDishes = item.dishes.filter((entry) => entry.status !== 'archived' && currentStatus(entry, 'dish') !== 'unlisted');
   const visiblePhotos = shopImages(item);
   const cover = portraitForShop(item);
-  return `<main class="wrap detail-page">${breadcrumb([canteen?.name || '食堂', item.name])}<div class="shop-detail-head"><div><span class="detail-label">${escapeHtml(canteen?.name || '')} / SHOP</span><h1><button class="title-edit" data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-field="name" data-canteen-id="${canteen?.id}" data-shop-id="${item.id}">${escapeHtml(item.name)} <span>✎</span></button></h1><p class="inline-edit-fields">${tagSummary(item)}<span>·</span><button data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-field="location" data-canteen-id="${canteen?.id}" data-shop-id="${item.id}">${escapeHtml(item.location || '位置待补充')} ✎</button></p><div class="detail-facts"><span>${icon('clock', 18)} 食堂 ${escapeHtml(canteen?.hours || '营业时间待补充')}</span><button class="fact-edit" data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-field="lateHours" data-canteen-id="${canteen?.id}" data-shop-id="${item.id}">${icon('spark', 18)} ${escapeHtml(item.lateHours || '店铺延时关门信息待补充')} ${icon('edit', 13)}</button></div></div><button class="shop-detail-art" data-action="open-gallery" data-kind="shop" data-id="${item.id}" aria-label="查看${escapeHtml(item.name)}的图片">${cover ? `<img src="${escapeHtml(cover.url)}" alt="${escapeHtml(cover.caption)}" />` : icon('image', 54)}</button></div>
-    <div class="detail-columns"><div><section class="detail-block"><div class="block-head"><div><span class="section-kicker">ON THE MENU</span><h2>菜品与价格</h2></div><button class="mini-add" data-action="open-contribution" data-type="dish" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${icon('plus', 17)} 补充菜品</button></div>${visibleDishes.length ? `<div class="dish-list">${visibleDishes.map((dish) => `<div class="dish-row" data-dish="${dish.id}" data-shop-id="${item.id}" role="link" tabindex="0" aria-label="查看${escapeHtml(dish.name)}详情">${dishImages(item, dish)[0] ? `<button class="dish-thumb-button" data-action="open-gallery" data-kind="dish" data-id="${dish.id}" data-shop-id="${item.id}"><img class="dish-thumb" src="${escapeHtml(dishImages(item, dish)[0].url)}" alt="${escapeHtml(dish.name)}" /></button>` : ''}<span><button class="dish-field-edit" data-action="open-contribution" data-type="field-update" data-target-kind="dish" data-field="name" data-dish-id="${dish.id}" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}"><b>${escapeHtml(dish.name)}</b></button><button class="dish-field-edit note" data-action="open-contribution" data-type="field-update" data-target-kind="dish" data-field="note" data-dish-id="${dish.id}" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${escapeHtml(dish.note || '补充说明')}</button></span><button class="dish-price-edit" data-action="open-contribution" data-type="field-update" data-target-kind="dish" data-field="price" data-dish-id="${dish.id}" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${dish.price ? `¥${escapeHtml(dish.price)}` : '价格待补充'}</button><button class="dish-edit" data-action="open-contribution" data-type="field-update" data-target-kind="dish" data-dish-id="${dish.id}" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}" aria-label="修改${escapeHtml(dish.name)}">${icon('edit', 16)}</button></div>`).join('')}</div>` : blankField('还没有菜品信息', '你可以补充菜品名称或口味与参考价格。', 'dish', item.id, canteen?.id)}</section>
+  return `<main class="wrap detail-page">${breadcrumb({ campusId: canteen?.campusId, canteen, shop: item })}<div class="shop-detail-head"><div><span class="detail-label">${escapeHtml(canteen?.name || '')} / SHOP</span><h1><button class="title-edit" data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-field="name" data-canteen-id="${canteen?.id}" data-shop-id="${item.id}">${escapeHtml(item.name)} <span>✎</span></button></h1><div class="status-edit-line">${statusBadge(item, 'shop')}<button class="quiet-button" data-action="open-contribution" data-type="status-update" data-target-kind="shop" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">申请修改营业状态</button></div><p class="inline-edit-fields">${tagSummary(item)}<span>·</span><button data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-field="location" data-canteen-id="${canteen?.id}" data-shop-id="${item.id}">${escapeHtml(item.location || '位置待补充')} ✎</button></p><div class="detail-facts"><span>${icon('clock', 18)} 食堂 ${escapeHtml(canteen?.hours || '营业时间待补充')}</span><button class="fact-edit" data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-field="lateHours" data-canteen-id="${canteen?.id}" data-shop-id="${item.id}">${icon('spark', 18)} ${escapeHtml(item.lateHours || '店铺延时关门信息待补充')} ${icon('edit', 13)}</button></div></div><button class="shop-detail-art" data-action="open-gallery" data-kind="shop" data-id="${item.id}" aria-label="查看${escapeHtml(item.name)}的图片">${cover ? `<img src="${escapeHtml(cover.url)}" alt="${escapeHtml(cover.caption)}" />` : icon('image', 54)}</button></div>
+    <div class="detail-columns"><div><section class="detail-block"><div class="block-head"><div><span class="section-kicker">ON THE MENU</span><h2>菜品与价格</h2></div><button class="mini-add" data-action="open-contribution" data-type="dish" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${icon('plus', 17)} 补充菜品</button></div>${visibleDishes.length ? `<div class="dish-list">${visibleDishes.map((dish) => `<div class="dish-row" data-dish="${dish.id}" data-shop-id="${item.id}" role="link" tabindex="0" aria-label="查看${escapeHtml(dish.name)}详情">${dishImages(item, dish)[0] ? `<button class="dish-thumb-button" data-action="open-gallery" data-kind="dish" data-id="${dish.id}" data-shop-id="${item.id}"><img class="dish-thumb" src="${escapeHtml(dishImages(item, dish)[0].url)}" alt="${escapeHtml(dish.name)}" /></button>` : ''}<span><button class="dish-field-edit" data-action="open-contribution" data-type="field-update" data-target-kind="dish" data-field="name" data-dish-id="${dish.id}" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}"><b>${escapeHtml(dish.name)}</b></button><button class="dish-field-edit note" data-action="open-contribution" data-type="field-update" data-target-kind="dish" data-field="note" data-dish-id="${dish.id}" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${escapeHtml(dish.note || '补充说明')}</button>${proposedStatus('dish', dish.id) ? statusBadge(dish, 'dish') : ''}</span><button class="dish-price-edit" data-action="open-contribution" data-type="field-update" data-target-kind="dish" data-field="price" data-dish-id="${dish.id}" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${dish.price ? `¥${escapeHtml(dish.price)}` : '价格待补充'}</button><button class="dish-edit" data-action="open-contribution" data-type="field-update" data-target-kind="dish" data-dish-id="${dish.id}" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}" aria-label="修改${escapeHtml(dish.name)}">${icon('edit', 16)}</button></div>`).join('')}</div>` : blankField('还没有菜品信息', '你可以补充菜品名称或口味与参考价格。', 'dish', item.id, canteen?.id)}</section>
     ${commentSection('shop', item.id)}</div>
-    <aside><section class="aside-card"><span class="section-kicker">ABOUT THIS SHOP</span><h3>一起把信息补全</h3><p>如果位置、标签或营业时间有变化，可以提交补充申请。</p><button class="button outline full" data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${icon('plus', 17)} 修改一项或多项</button></section><section class="aside-card photo-card"><div class="block-head"><h3>店铺与菜品图片</h3><button class="mini-add" data-action="open-gallery" data-kind="shop" data-id="${item.id}">查看全部 ${visiblePhotos.length}</button></div><button class="photo-preview" data-action="open-gallery" data-kind="shop" data-id="${item.id}">${visiblePhotos.length ? visiblePhotos.slice(0, 3).map((photo) => `<img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.caption)}" />`).join('') : `<span>${icon('image', 30)} 暂无图片，点击补充</span>`}</button></section><section class="aside-card related-posts-card"><div class="block-head"><h3>相关美食贴</h3><button class="mini-add" data-action="open-post">${icon('plus', 17)} 发帖</button></div>${relatedPosts.length ? relatedPosts.slice(0, 3).map((post) => `<button class="related-post" data-post="${post.id}"><b>${escapeHtml(post.title)}</b><small>${escapeHtml(post.author)} · ${dateLabel(post.createdAt)}</small></button>`).join('') : '<p class="related-empty">还没有关联帖子，欢迎分享这家店。</p>'}</section></aside></div>${provisional.length ? provisionalPanel(provisional) : ''}</main>`;
+    <aside><section class="aside-card"><span class="section-kicker">ABOUT THIS SHOP</span><h3>一起把信息补全</h3><p>如果位置、标签或营业时间有变化，可以提交补充申请。</p><button class="button outline full" data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-shop-id="${item.id}" data-canteen-id="${canteen?.id}">${icon('plus', 17)} 修改一项或多项</button></section><section class="aside-card photo-card"><div class="block-head"><h3>店铺与菜品图片</h3><button class="mini-add" data-action="open-gallery" data-kind="shop" data-id="${item.id}">查看全部 ${visiblePhotos.length}</button></div><button class="photo-preview" data-action="open-gallery" data-kind="shop" data-id="${item.id}">${visiblePhotos.length ? samplePhotos(visiblePhotos, 3, item.id).map((photo) => `<img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.caption)}" />`).join('') : `<span>${icon('image', 30)} 暂无图片，点击补充</span>`}</button></section><section class="aside-card related-posts-card"><div class="block-head"><h3>相关美食贴</h3><button class="mini-add" data-action="open-post">${icon('plus', 17)} 发帖</button></div>${relatedPosts.length ? relatedPosts.slice(0, 3).map((post) => `<button class="related-post" data-post="${post.id}"><b>${escapeHtml(post.title)}</b><small>${escapeHtml(post.author)} · ${dateLabel(post.createdAt)}</small></button>`).join('') : '<p class="related-empty">还没有关联帖子，欢迎分享这家店。</p>'}</section></aside></div>${provisional.length ? provisionalPanel(provisional) : ''}${fixedPanel(fixed)}</main>`;
 }
 
 function dishView() {
@@ -187,7 +200,7 @@ function dishView() {
   if (!shop || !dish) return missingView();
   const canteen = activeCanteens().find((entry) => entry.id === shop.canteenId);
   const images = dishImages(shop, dish);
-  return `<main class="wrap detail-page dish-page"><div class="breadcrumb"><button data-view="directory">食堂展示</button>${icon('chevron', 14)}<button data-canteen="${canteen?.id}">${escapeHtml(canteen?.name || '食堂')}</button>${icon('chevron', 14)}<button data-shop="${shop.id}">${escapeHtml(shop.name)}</button>${icon('chevron', 14)}<span>${escapeHtml(dish.name)}</span></div><section class="dish-hero"><div><span class="detail-label">${escapeHtml(shop.name)} / DISH</span><h1>${escapeHtml(dish.name)}</h1><p>${escapeHtml(dish.note || '还没有详细说明，欢迎补充。')}</p><strong>${dish.price ? `¥${escapeHtml(dish.price)}` : '价格待补充'}</strong><div><button class="button outline" data-action="open-contribution" data-type="field-update" data-target-kind="dish" data-canteen-id="${canteen?.id}" data-shop-id="${shop.id}" data-dish-id="${dish.id}">${icon('edit', 17)} 修改菜品信息</button></div></div><button class="dish-hero-photo" data-action="open-gallery" data-kind="dish" data-id="${dish.id}" data-shop-id="${shop.id}">${images.length ? `<img src="${escapeHtml(images[0].url)}" alt="${escapeHtml(dish.name)}" />` : `<span>${icon('image', 36)}<small>添加菜品照片</small></span>`}</button></section><section class="detail-block dish-gallery-block"><div class="block-head"><div><span class="section-kicker">DISH PHOTOS</span><h2>图片 ${images.length}</h2></div><button class="mini-add" data-action="open-gallery" data-kind="dish" data-id="${dish.id}" data-shop-id="${shop.id}">查看全部</button></div><div class="dish-photo-strip">${images.slice(0, 4).map((photo) => `<button data-action="open-gallery" data-kind="dish" data-id="${dish.id}" data-shop-id="${shop.id}"><img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.caption)}" /></button>`).join('')}<button class="dish-photo-add" data-action="open-contribution" data-type="photo" data-photo-kind="dish" data-canteen-id="${canteen?.id}" data-shop-id="${shop.id}" data-dish-id="${dish.id}">${icon('plus', 24)} 添加照片</button></div></section>${commentSection('dish', dish.id)}</main>`;
+  return `<main class="wrap detail-page dish-page">${breadcrumb({ campusId: canteen?.campusId, canteen, shop, current: dish.name })}<section class="dish-hero"><div><span class="detail-label">${escapeHtml(shop.name)} / DISH</span><h1>${escapeHtml(dish.name)}</h1><div class="status-edit-line">${statusBadge(dish, 'dish')}<button class="quiet-button" data-action="open-contribution" data-type="status-update" data-target-kind="dish" data-canteen-id="${canteen?.id}" data-shop-id="${shop.id}" data-dish-id="${dish.id}">申请修改供应状态</button></div><p>${escapeHtml(dish.note || '还没有详细说明，欢迎补充。')}</p><strong>${dish.price ? `¥${escapeHtml(dish.price)}` : '价格待补充'}</strong><div><button class="button outline" data-action="open-contribution" data-type="field-update" data-target-kind="dish" data-canteen-id="${canteen?.id}" data-shop-id="${shop.id}" data-dish-id="${dish.id}">${icon('edit', 17)} 修改菜品信息</button></div></div><button class="dish-hero-photo" data-action="open-gallery" data-kind="dish" data-id="${dish.id}" data-shop-id="${shop.id}">${images.length ? `<img src="${escapeHtml(images[0].url)}" alt="${escapeHtml(dish.name)}" />` : `<span>${icon('image', 36)}<small>添加菜品照片</small></span>`}</button></section><section class="detail-block dish-gallery-block"><div class="block-head"><div><span class="section-kicker">DISH PHOTOS</span><h2>图片 ${images.length}</h2></div><button class="mini-add" data-action="open-gallery" data-kind="dish" data-id="${dish.id}" data-shop-id="${shop.id}">查看全部</button></div><div class="dish-photo-strip">${samplePhotos(images, 3, dish.id).map((photo) => `<button data-action="open-gallery" data-kind="dish" data-id="${dish.id}" data-shop-id="${shop.id}"><img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.caption)}" /></button>`).join('')}<button class="dish-photo-add" data-action="open-contribution" data-type="photo" data-photo-kind="dish" data-canteen-id="${canteen?.id}" data-shop-id="${shop.id}" data-dish-id="${dish.id}">${icon('plus', 24)} 添加照片</button></div></section>${commentSection('dish', dish.id)}${proposedStatus('dish', dish.id) ? provisionalPanel([proposedStatus('dish', dish.id)]) : ''}</main>`;
 }
 
 function blankField(title, description, type, shopId, canteenId) { return `<div class="blank-field"><span class="blank-field-icon">${icon('plus', 22)}</span><strong>${title}</strong><p>${description}</p><button class="text-action" data-action="open-contribution" data-type="${type}" data-shop-id="${shopId}" data-canteen-id="${canteenId}">申请补充 ${icon('arrow', 17)}</button></div>`; }
@@ -199,7 +212,7 @@ function contributeView() {
 
 function profileMessages() {
   const entries = state.data.contributions.filter((entry) => entry.ownerId === state.actorId);
-  const labels = { pending: '等待审核', provisional: '暂示中', fixed: '已固定收录', rejected: '未通过', expired: '暂示已结束' };
+  const labels = { pending: '等待审核', provisional: '暂示中', fixed: '已固定收录', contested: '固定资料待复核', revoked: '已撤销收录', rejected: '未通过', expired: '暂示已结束' };
   return `<div class="profile-section-intro"><h3>我的消息</h3><p>共建申请的审核结果会显示在这里。</p></div><div class="profile-message-list">${entries.length ? entries.map((entry) => `<article class="message-card ${entry.status !== 'pending' && !entry.notificationReadAt ? 'unread' : ''}"><div><span class="status-pill">${labels[entry.status] || entry.status}</span><small>${dateLabel(entry.reviewedAt || entry.submittedAt)}</small></div><h2>${escapeHtml(entry.title)}</h2><p>${entry.status === 'pending' ? '申请已送达管理员工作台。' : entry.reviewNote ? escapeHtml(entry.reviewNote) : '管理员已处理这条申请。'}</p>${entry.status !== 'pending' && !entry.notificationReadAt ? `<button class="text-action" data-action="mark-message-read" data-id="${entry.id}">标为已读 ${icon('check', 15)}</button>` : ''}</article>`).join('') : '<div class="profile-empty">还没有共建申请。提交后可在这里查看审核消息。</div>'}</div>`;
 }
 
@@ -220,21 +233,21 @@ function profileSidebar() {
 function rulesView() {
   return `<main class="wrap content-page rules-page"><div class="page-intro"><span class="section-kicker">COMMUNITY GUIDE</span><h1>网站评价规则</h1><p>用真实、具体的信息帮助同学选择下一餐。本站不设置打分。以下规则会明确标出当前已启用的部分和后续草案。</p></div><div class="rules-grid">
     <section><span>01 · 已启用</span><h2>发布与共建</h2><p>店铺、菜品和美食贴可以评论，暂不开放回复。评论和帖子提交时使用演示屏蔽词筛选；共建申请由管理员审核，可暂示 24 小时或直接收录。</p></section>
-    <section><span>02 · 演示中</span><h2>赞同与反对</h2><p>评论、帖子与暂示中的共建信息可赞同或反对。每个演示身份对同一内容只保留一次有效态度，可撤销或改选；不能给自己的内容表态。标签窗口里的心形按钮目前只是占位。</p></section>
-    <section><span>03 · 草案，未启用</span><h2>自动隐藏与复核</h2><p>评论或帖子若收到至少 5 个不同用户的反对，且反对数达到赞同数的 2 倍，拟先折叠并送管理员复核。标签达到相同门槛时拟进入复核，不直接删除。管理员可恢复误伤内容。</p></section>
+    <section><span>02 · 演示中</span><h2>赞同与反对</h2><p>标签、评论、帖子与共建信息可赞同或反对。每个演示身份对同一内容只保留一次有效态度，可撤销或改选；不能给自己的内容表态。</p></section>
+    <section><span>03 · 演示中</span><h2>隐藏与复核</h2><p>评论、帖子或标签收到至少 5 个反对，且反对数达到赞同数的 2 倍时自动隐藏，由管理员复核。暂示信息得到 2 个赞同可固定，得到 2 个反对可提前撤销；已固定信息集中被反对时交管理员复核。</p></section>
     <section><span>04 · 草案，未启用</span><h2>推荐票</h2><p>每人每天获得 1 张基础票；额外奖励票可保留。同一店铺每人每天最多投 3 张。店铺票数按周清零并生成当周排行，个人未使用的奖励票不随店铺周榜清零。</p></section>
     <section><span>05 · 草案，未启用</span><h2>额外推荐票</h2><p>拟定评论获得 5 个不同用户赞同、帖子获得 10 个不同用户赞同，或共建申请被固定收录时，各奖励 1 张；每条内容只奖励一次，不计本人表态。最终门槛将在真实用户试用后调整。</p></section>
-    <section><span>06 · 当前身份说明</span><h2>演示与正式开放</h2><p>当前的发布人、浏览人、管理员可以随时切换，不代表已验证身份，内容保存在${storageName()}。目前的表态用于测试交互；推荐票和自动隐藏仍待真实身份与服务端权限接入。</p></section>
+    <section><span>06 · 当前身份说明</span><h2>演示与正式开放</h2><p>当前的发布人、浏览人、管理员可以随时切换，不代表已验证身份，内容保存在${storageName()}。目前的表态和自动处理仅用于测试；正式开放前需接入学校身份与反刷机制。推荐票仍未启用。</p></section>
   </div></main>`;
 }
 
 function postsView() {
-  const posts = (state.data.posts || []).filter((entry) => entry.status !== 'archived');
+  const posts = (state.data.posts || []).filter((entry) => !['archived', 'hidden'].includes(entry.status));
   return `<main class="wrap content-page"><div class="page-intro"><span class="section-kicker">FOOD STORIES</span><h1>美食贴</h1><p>选一家已收录的店铺，分享你的一餐。当前内容保存在${storageName()}。</p><button class="button primary" data-action="open-post">${icon('plus', 18)} 发美食贴</button></div><div class="posts-grid">${posts.length ? posts.map((post) => { const shop = activeShops().find((entry) => entry.id === post.shopId); return `<article class="post-card" data-post="${post.id}" role="link" tabindex="0" aria-label="阅读${escapeHtml(post.title)}">${post.photo ? `<img src="${escapeHtml(post.photo)}" alt="${escapeHtml(post.title)}" />` : ''}<div><span class="section-kicker">${escapeHtml(shop?.name || '店铺')}</span><h2>${escapeHtml(post.title)}</h2><p>${escapeHtml(postPreview(post))}${post.body?.length > 105 ? '…' : ''}</p><small>${escapeHtml(post.author)} · ${dateLabel(post.createdAt)}</small>${reactionButtons('post', post)}</div></article>`; }).join('') : `<div class="empty-canteen"><span class="empty-kicker">FIRST STORY</span><h3>还没有美食贴</h3><p>发一篇帖子，分享你最近发现的味道。</p><button class="button outline" data-action="open-post">写第一篇 ${icon('arrow', 17)}</button></div>`}</div></main>`;
 }
 
 function postDetailView() {
-  const post = (state.data.posts || []).find((entry) => entry.id === state.postId && entry.status !== 'archived');
+  const post = (state.data.posts || []).find((entry) => entry.id === state.postId && !['archived', 'hidden'].includes(entry.status));
   if (!post) return missingView();
   const shop = activeShops().find((entry) => entry.id === post.shopId);
   const canteen = activeCanteens().find((entry) => entry.id === shop?.canteenId);
@@ -248,6 +261,27 @@ function postModal() {
   return `<div class="modal-backdrop" data-action="close-modal"><div class="modal post-editor-modal" role="dialog" aria-modal="true" aria-label="发美食贴" data-stop><div class="modal-head"><div><span class="section-kicker">FOOD STORIES</span><h2>发美食贴</h2><p>选好店铺，再分享你的发现。</p></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div>${shops.length ? `<form id="post-form" class="modal-form"><div class="shop-picker"><label for="post-shop-search">关联店铺</label><div class="shop-picker-input">${icon('search', 18)}<input id="post-shop-search" type="search" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="post-shop-options" placeholder="搜索店铺或食堂" value="${escapeHtml(selectedName)}" /></div><input id="post-shop-id" name="shopId" type="hidden" value="${escapeHtml(selected?.id || '')}" /><div id="post-shop-options" class="shop-picker-options" role="listbox" hidden></div><small id="post-shop-hint">输入名称查找，点击结果关联店铺</small></div><label>标题<input name="title" maxlength="80" required placeholder="这餐有什么值得分享？" /></label><div class="rich-editor-wrap"><span class="editor-label">正文</span><div class="editor-toolbar" role="toolbar" aria-label="文字格式"><button type="button" data-action="format-editor" data-command="bold" aria-label="加粗"><b>B</b></button><button type="button" data-action="format-editor" data-command="italic" aria-label="斜体"><i>I</i></button><button type="button" data-action="format-editor" data-command="underline" aria-label="下划线"><u>U</u></button><button type="button" data-action="format-editor" data-command="heading" aria-label="小标题">H2</button><button type="button" data-action="format-editor" data-command="list" aria-label="无序列表">☷</button><label class="editor-image-control">${icon('image', 17)} 添加图片<input id="post-inline-image" type="file" accept="image/png,image/jpeg,image/webp" /></label></div><div id="post-editor" class="rich-editor" contenteditable="true" role="textbox" aria-label="帖子正文" aria-multiline="true" data-placeholder="写下味道、感受或你的发现…"></div><small>支持加粗、斜体、小标题、列表和正文插图；最多 3 张，大图自动压缩到 900KB 内。</small></div><div class="form-identity">以 <b>${escapeHtml(actor()?.name || '')}</b> 身份发布</div><div class="form-notice">${icon('shield', 17)} 帖子经过演示屏蔽词筛选，内容保存在${storageName()}。</div><button class="button primary full" type="submit">发布美食贴</button></form>` : `<div class="post-empty-note">还没有已收录店铺。先到「一起共建」申请添加店铺，管理员确认后即可关联发帖。</div>`}</div></div>`;
 }
 
+function fixedPanel(items) {
+  if (!items.length) return '';
+  return `<section class="fixed-contributions"><div class="detail-section-head"><div><span class="section-kicker">COMMUNITY RECORD</span><h2>已收录的共建</h2><p>最近收录的 ${Math.min(items.length, 6)} 条资料</p></div></div>${items.slice(0, 6).map((item) => `<article class="fixed-contribution"><div><strong>${escapeHtml(item.title)}</strong><small>由 ${escapeHtml(item.author)} 提交</small></div></article>`).join('')}</section>`;
+}
+
+function adminMaintenance() {
+  const canteens = activeCanteens();
+  const selected = canteens.find((item) => item.id === state.adminCanteenId) || canteens[0];
+  const shops = activeShops().filter((shop) => shop.canteenId === selected?.id);
+  return `<section class="admin-section"><div class="admin-section-head"><div><h2>直接维护资料</h2><p>先在左侧选择食堂，再管理右侧对应店铺。</p></div><div class="head-actions"><button class="button small outline" data-action="edit-campus">编辑校区</button><button class="button small outline" data-action="edit-canteen">添加食堂</button><button class="button small primary" data-action="edit-shop">添加店铺</button></div></div><div class="manage-columns"><div><h3>食堂</h3>${canteens.length ? canteens.map((item) => `<div class="manage-row ${selected?.id === item.id ? 'selected-canteen' : ''}"><button class="manage-select" data-action="select-admin-canteen" data-id="${item.id}" aria-pressed="${selected?.id === item.id}"><span class="manage-icon">${icon('bowl', 20)}</span><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(state.data.campuses.find((campus) => campus.id === item.campusId)?.name || '')} · ${escapeHtml(item.hours || '时间待补充')}</small></span></button><button aria-label="管理${escapeHtml(item.name)}照片" data-action="manage-canteen-photos" data-id="${item.id}">${icon('image', 17)}</button><button aria-label="编辑${escapeHtml(item.name)}" data-action="edit-canteen" data-id="${item.id}">${icon('edit', 17)}</button><button aria-label="下架${escapeHtml(item.name)}" data-action="remove-canteen" data-id="${item.id}">${icon('trash', 17)}</button></div>`).join('') : '<p class="admin-list-empty">还没有食堂。</p>'}</div><div><h3>${escapeHtml(selected?.name || '店铺')} · 店铺 ${shops.length}</h3>${shops.length ? shops.map((item) => `<div class="manage-row"><span class="manage-icon">${icon('leaf', 20)}</span><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(selected?.name || '')} · ${statusLabels[currentStatus(item, 'shop')]}</small></span><button aria-label="管理${escapeHtml(item.name)}的菜品和图片" data-action="manage-shop-content" data-id="${item.id}">${icon('image', 17)}</button><button aria-label="编辑${escapeHtml(item.name)}" data-action="edit-shop" data-id="${item.id}">${icon('edit', 17)}</button><button aria-label="下架${escapeHtml(item.name)}" data-action="remove-shop" data-id="${item.id}">${icon('trash', 17)}</button></div>`).join('') : '<p class="admin-list-empty">该食堂还没有已收录店铺。</p>'}</div></div></section>`;
+}
+
+function adminModeration() {
+  const comments = state.data.comments.filter((item) => item.status !== 'archived');
+  const posts = state.data.posts.filter((item) => item.status !== 'archived');
+  const tags = state.data.shops.flatMap((shop) => (shop.tagRecords || []).filter((item) => item.status !== 'archived').map((item) => ({ ...item, shopName: shop.name })));
+  const contested = state.data.contributions.filter((item) => item.status === 'contested');
+  const entry = (kind, item, title, detail) => `<div class="moderation-row ${item.status === 'hidden' ? 'is-hidden-content' : ''}"><div><span class="status-pill">${item.status === 'hidden' ? '已隐藏 · 待复核' : '公开中'}</span><b>${escapeHtml(title)}</b><small>${escapeHtml(detail)}</small></div><div class="moderation-actions">${item.status === 'hidden' ? `<button data-action="moderate" data-kind="${kind}" data-id="${escapeHtml(item.id)}" data-decision="restore">恢复</button>` : `<button data-action="moderate" data-kind="${kind}" data-id="${escapeHtml(item.id)}" data-decision="hide">隐藏</button>`}<button data-action="moderate" data-kind="${kind}" data-id="${escapeHtml(item.id)}" data-decision="remove">移除</button></div></div>`;
+  return `<section class="admin-section moderation-section"><div class="admin-section-head"><div><h2>评论、帖子与标签</h2><p>查看已发布内容；隐藏内容可复核恢复，移除后不再公开。</p></div></div><div class="moderation-columns"><div><h3>评论 ${comments.length}</h3>${comments.slice(0, 30).map((item) => entry('comment', item, item.body, `${item.author} · ${dateLabel(item.createdAt)}`)).join('') || '<p class="admin-list-empty">暂无评论。</p>'}</div><div><h3>帖子 ${posts.length}</h3>${posts.slice(0, 30).map((item) => entry('post', item, item.title, `${item.author} · ${dateLabel(item.createdAt)}`)).join('') || '<p class="admin-list-empty">暂无帖子。</p>'}</div><div><h3>店铺标签 ${tags.length}</h3>${tags.slice(0, 30).map((item) => entry('tag', item, item.name, item.shopName)).join('') || '<p class="admin-list-empty">暂无标签。</p>'}</div></div>${contested.length ? `<div class="contested-list"><h3>已固定资料待复核</h3>${contested.map((item) => `<div class="moderation-row"><div><span class="status-pill">有异议</span><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.reviewNote)}</small></div><div class="moderation-actions"><button data-action="resolve-contested" data-id="${item.id}" data-decision="restore">继续收录</button><button data-action="resolve-contested" data-id="${item.id}" data-decision="revoke">撤销收录</button></div></div>`).join('')}</div>` : ''}</section>`;
+}
+
 function adminView() {
   const pending = state.data.contributions.filter((item) => item.status === 'pending');
   const provisional = state.data.contributions.filter((item) => item.status === 'provisional');
@@ -256,7 +290,7 @@ function adminView() {
   return `<main class="wrap admin-page"><div class="admin-top"><div><span class="section-kicker">LOCAL ADMIN PREVIEW</span><h1>管理工作台</h1><p>这是无权限保护的本地演示界面，正式上线前必须接入管理员身份验证。</p></div><span class="preview-tag">仅供本地预览</span></div><div class="admin-stats"><div><strong>${pending.length}</strong><span>待审核申请</span></div><div><strong>${provisional.length}</strong><span>暂示中</span></div><div><strong>${activeCanteens().length}</strong><span>已收录食堂</span></div><div><strong>${activeShops().length}</strong><span>已收录店铺</span></div></div>
   <section class="admin-section"><div class="admin-section-head"><div><h2>共建申请</h2><p>审核后选择暂示 24 小时、直接固定或驳回。</p></div></div>${pending.length ? pending.map(reviewCard).join('') : `<div class="admin-empty">${icon('check', 25)} 当前没有待审核申请</div>`}</section>
   ${provisional.length ? `<section class="admin-section"><div class="admin-section-head"><div><h2>暂示中的资料</h2><p>到期会自动停止展示；管理员可提前固定或撤销。</p></div></div>${provisional.map((item) => `<div class="manage-row"><span class="status-pill">暂示中</span><span><b>${escapeHtml(item.title)}</b><small>至 ${dateLabel(item.expiresAt)}</small></span><button class="mini-add" data-action="revoke-provisional" data-id="${item.id}">撤销</button><button class="mini-add" data-action="fix-provisional" data-id="${item.id}">固定收录</button></div>`).join('')}</section>` : ''}
-  <section class="admin-section"><div class="admin-section-head"><div><h2>直接维护资料</h2><p>管理员可以补充、修改或下架资料。下架不会抹掉本地审核记录。</p></div><div class="head-actions"><button class="button small outline" data-action="edit-campus">编辑校区</button><button class="button small outline" data-action="edit-canteen">添加食堂</button><button class="button small primary" data-action="edit-shop">添加店铺</button></div></div><div class="manage-columns"><div><h3>食堂</h3>${activeCanteens().length ? activeCanteens().map((item) => `<div class="manage-row"><span class="manage-icon">${icon('bowl', 20)}</span><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(state.data.campuses.find((campus) => campus.id === item.campusId)?.name || '')} · ${escapeHtml(item.hours || '时间待补充')}</small></span><button aria-label="管理${escapeHtml(item.name)}照片" data-action="manage-canteen-photos" data-id="${item.id}">${icon('image', 17)}</button><button aria-label="编辑${escapeHtml(item.name)}" data-action="edit-canteen" data-id="${item.id}">${icon('edit', 17)}</button><button aria-label="下架${escapeHtml(item.name)}" data-action="remove-canteen" data-id="${item.id}">${icon('trash', 17)}</button></div>`).join('') : '<p class="admin-list-empty">还没有食堂。</p>'}</div><div><h3>店铺</h3>${activeShops().length ? activeShops().map((item) => `<div class="manage-row"><span class="manage-icon">${icon('leaf', 20)}</span><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(activeCanteens().find((canteen) => canteen.id === item.canteenId)?.name || '')}</small></span><button aria-label="管理${escapeHtml(item.name)}的菜品和图片" data-action="manage-shop-content" data-id="${item.id}">${icon('image', 17)}</button><button aria-label="编辑${escapeHtml(item.name)}" data-action="edit-shop" data-id="${item.id}">${icon('edit', 17)}</button><button aria-label="下架${escapeHtml(item.name)}" data-action="remove-shop" data-id="${item.id}">${icon('trash', 17)}</button></div>`).join('') : '<p class="admin-list-empty">还没有店铺。</p>'}</div></div></section>
+  ${adminMaintenance()}${adminModeration()}
   ${archived.length ? `<section class="admin-section"><div class="admin-section-head"><div><h2>已下架资料</h2><p>可恢复误操作下架的食堂或店铺。</p></div></div>${archived.map((item) => `<div class="manage-row"><span class="status-pill">已下架</span><span><b>${escapeHtml(item.name)}</b><small>${item.kind === 'canteen' ? '食堂' : '店铺'}</small></span><button class="mini-add" data-action="restore-entry" data-kind="${item.kind}" data-id="${item.id}">恢复</button></div>`).join('')}</section>` : ''}
   <div class="admin-bottom"><span>预览数据存于${storageName()}；清空操作不可恢复。</span><button class="quiet-button" data-action="reset-preview">清空本地预览数据</button></div></main>`;
 }
@@ -264,6 +298,7 @@ function adminView() {
 function reviewDetails(item) {
   if (!item) return '';
   const fields = [];
+  if (item.type === 'status-update') fields.push(['申请状态', statusLabels[item.requestedStatus] || item.requestedStatus]);
   if (item.type === 'dish') fields.push(['参考价格', item.price ? `¥${item.price}` : '未填写']);
   if (item.type === 'shop') fields.push(['标签', shopTags(item).join('、') || '未填写']);
   if (item.type === 'canteen' && item.hours) fields.push(['营业时间', item.hours]);
@@ -272,7 +307,7 @@ function reviewDetails(item) {
 }
 
 function reviewCard(item) {
-  const labels = { canteen: '新增食堂', shop: '新增店铺', dish: '补充菜品或口味', hours: '营业时间', photo: '店铺图片', 'canteen-photo': '食堂照片', 'shop-info': '店铺信息', 'field-update': '资料修改' };
+  const labels = { 'status-update': '状态修改', canteen: '新增食堂', shop: '新增店铺', dish: '补充菜品或口味', hours: '营业时间', photo: '店铺图片', 'canteen-photo': '食堂照片', 'shop-info': '店铺信息', 'field-update': '资料修改' };
   const canteen = state.data.canteens.find((entry) => entry.id === item.canteenId);
   const shop = state.data.shops.find((entry) => entry.id === item.shopId);
   const dish = shop?.dishes.find((entry) => entry.id === item.dishId);
@@ -302,17 +337,18 @@ function contributionModalV2() {
   const shopId = shops.some((item) => item.id === context.shopId) ? context.shopId : '';
   const dishes = activeShops().find((item) => item.id === shopId)?.dishes.filter((item) => item.status !== 'archived') || [];
   const needsCanteen = type !== 'canteen';
-  const needsShop = type === 'dish' || type === 'photo' || (type === 'field-update' && targetKind !== 'canteen');
-  const needsDish = type === 'field-update' && targetKind === 'dish';
+  const needsShop = type === 'dish' || type === 'photo' || type === 'status-update' || (type === 'field-update' && targetKind !== 'canteen');
+  const needsDish = (type === 'field-update' || type === 'status-update') && targetKind === 'dish';
   const lock = context.lockTarget || '';
   const lockCampus = ['campus', 'canteen', 'shop', 'dish'].includes(lock);
   const lockCanteen = ['canteen', 'shop', 'dish'].includes(lock);
   const lockShop = ['shop', 'dish'].includes(lock);
   const lockDish = lock === 'dish';
-  const heading = type === 'canteen' ? '添加食堂' : type === 'shop' ? '添加店铺' : type === 'dish' ? '补充菜品或口味' : type === 'photo' ? context.photoKind === 'dish' ? '添加菜品图片' : '添加店铺图片' : type === 'canteen-photo' ? '添加食堂照片' : '修改资料';
+  const heading = type === 'canteen' ? '添加食堂' : type === 'shop' ? '添加店铺' : type === 'dish' ? '补充菜品或口味' : type === 'photo' ? context.photoKind === 'dish' ? '添加菜品图片' : '添加店铺图片' : type === 'canteen-photo' ? '添加食堂照片' : type === 'status-update' ? '申请修改状态' : '修改资料';
   const targetNames = [state.data.campuses.find((item) => item.id === selectedCampusId)?.name, canteens.find((item) => item.id === canteenId)?.name, shops.find((item) => item.id === shopId)?.name, needsDish || context.dishId ? dishes.find((item) => item.id === context.dishId)?.name : ''].filter(Boolean);
   const choices = type === 'field-update' ? `<div class="choice-intro"><b>选择要修改的条目</b><span>可以只提交一项，也可以勾选多项。</span></div><div class="field-choice-list">${changeFields[targetKind].map(([field, label]) => `<div class="field-choice ${context.field === field ? 'selected' : ''}"><label class="choice-toggle"><input type="checkbox" data-change-field="${field}" ${context.field === field ? 'checked' : ''} /><span>${label}</span></label><div class="choice-input ${context.field === field ? '' : 'is-hidden'}"><input name="change_${field}" maxlength="${field === 'note' ? 200 : 120}" placeholder="${field === 'tags' ? '填写要追加的标签，多个用逗号分隔' : `填写新的${label}`}" ${context.field === field ? 'required' : ''} /></div></div>`).join('')}</div>` : '';
-  const content = type === 'field-update' ? choices
+  const content = type === 'status-update' ? `<label>申请状态<select name="requestedStatus" required><option value="">请选择新状态</option>${(targetKind === 'shop' ? [['open', '正常营业'], ['temporarily_closed', '暂示闭店'], ['unlisted', '下架']] : [['available', '可售'], ['unlisted', '下架']]).map(([value, label]) => `<option value="${value}" ${context.requestedStatus === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>情况说明（选填）<textarea name="detail" maxlength="200" placeholder="例如：店铺暂停营业、菜品不再供应"></textarea></label>`
+    : type === 'field-update' ? choices
     : type === 'canteen' ? '<label>食堂名称<input name="title" maxlength="60" required placeholder="先告诉我们食堂叫什么" /></label><label>位置（选填）<input name="detail" maxlength="120" placeholder="只知道名字也可以提交" /></label><label>营业时间（选填）<input name="hours" maxlength="120" placeholder="如：每天 07:00–20:00" /></label>'
     : type === 'shop' ? '<label>店铺名称<input name="title" maxlength="60" required placeholder="先告诉我们店铺叫什么" /></label><label>位置（选填）<input name="detail" maxlength="120" placeholder="如：食堂二楼东侧" /></label><label>标签（选填，可多个）<input name="tags" maxlength="120" placeholder="如：面食、饮品、夜宵，用逗号分隔" /></label>'
     : type === 'dish' ? '<label>菜品名称或口味<input name="title" maxlength="60" required placeholder="如：招牌牛肉面、番茄口味" /></label><label>参考价格（选填）<input name="price" maxlength="20" placeholder="如：12.00" /></label><label>补充说明（选填）<textarea name="detail" maxlength="200" placeholder="分量、食材或其他有用信息"></textarea></label><label>菜品照片（选填）<input name="photoFile" type="file" accept="image/png,image/jpeg,image/webp" /></label>'
@@ -333,7 +369,7 @@ function editModal() {
   if (context.kind === 'campus') return `<div class="modal-backdrop" data-action="close-modal"><div class="modal narrow" role="dialog" aria-modal="true" aria-label="编辑校区" data-stop><div class="modal-head"><h2>编辑校区名称</h2><button class="icon-button" data-action="close-modal">${icon('close', 20)}</button></div><form id="edit-form" class="modal-form"><input type="hidden" name="kind" value="campus" />${data.campuses.map((item) => `<label>${escapeHtml(item.name)}<input name="${item.id}" value="${escapeHtml(item.name)}" required maxlength="40" /></label>`).join('')}<button class="button primary full" type="submit">保存校区名称</button></form></div></div>`;
   const isCanteen = context.kind === 'canteen';
   const item = context.id && (isCanteen ? data.canteens : data.shops).find((entry) => entry.id === context.id);
-  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal narrow" role="dialog" aria-modal="true" aria-label="${isCanteen ? '编辑食堂' : '编辑店铺'}" data-stop><div class="modal-head"><div><span class="section-kicker">ADMIN EDIT</span><h2>${item ? '编辑' : '添加'}${isCanteen ? '食堂' : '店铺'}</h2></div><button class="icon-button" data-action="close-modal">${icon('close', 20)}</button></div><form id="edit-form" class="modal-form"><input type="hidden" name="kind" value="${context.kind}" /><input type="hidden" name="entryId" value="${item?.id || ''}" />${isCanteen ? `<label>校区<select name="campusId" required>${data.campuses.map((campusItem) => `<option value="${campusItem.id}" ${campusItem.id === (item?.campusId || state.campusId) ? 'selected' : ''}>${escapeHtml(campusItem.name)}</option>`).join('')}</select></label>` : `<label>所属食堂<select name="canteenId" required><option value="">请选择食堂</option>${activeCanteens().map((canteen) => `<option value="${canteen.id}" ${canteen.id === item?.canteenId ? 'selected' : ''}>${escapeHtml(canteen.name)}</option>`).join('')}</select></label>`}<label>名称<input name="name" value="${escapeHtml(item?.name || '')}" required maxlength="60" /></label><label>位置<input name="location" value="${escapeHtml(item?.location || '')}" maxlength="120" placeholder="可留空，之后由共建补充" /></label>${isCanteen ? `<label>营业时间<input name="hours" value="${escapeHtml(item?.hours || '')}" maxlength="120" placeholder="如：每日 07:00–20:00" /></label>` : `<label>标签（逗号分隔）<input name="tags" value="${escapeHtml(shopTags(item || {}).join('、'))}" maxlength="120" placeholder="如：面食、饮品、夜宵" /></label><label>延时关门说明<input name="lateHours" value="${escapeHtml(item?.lateHours || '')}" maxlength="120" /></label>`}<button class="button primary full" type="submit">保存资料</button></form></div></div>`;
+  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal narrow" role="dialog" aria-modal="true" aria-label="${isCanteen ? '编辑食堂' : '编辑店铺'}" data-stop><div class="modal-head"><div><span class="section-kicker">ADMIN EDIT</span><h2>${item ? '编辑' : '添加'}${isCanteen ? '食堂' : '店铺'}</h2></div><button class="icon-button" data-action="close-modal">${icon('close', 20)}</button></div><form id="edit-form" class="modal-form"><input type="hidden" name="kind" value="${context.kind}" /><input type="hidden" name="entryId" value="${item?.id || ''}" />${isCanteen ? `<label>校区<select name="campusId" required>${data.campuses.map((campusItem) => `<option value="${campusItem.id}" ${campusItem.id === (item?.campusId || state.campusId) ? 'selected' : ''}>${escapeHtml(campusItem.name)}</option>`).join('')}</select></label>` : `<label>所属食堂<select name="canteenId" required><option value="">请选择食堂</option>${activeCanteens().map((canteen) => `<option value="${canteen.id}" ${canteen.id === item?.canteenId ? 'selected' : ''}>${escapeHtml(canteen.name)}</option>`).join('')}</select></label>`}<label>名称<input name="name" value="${escapeHtml(item?.name || '')}" required maxlength="60" /></label><label>位置<input name="location" value="${escapeHtml(item?.location || '')}" maxlength="120" placeholder="可留空，之后由共建补充" /></label>${isCanteen ? `<label>营业时间<input name="hours" value="${escapeHtml(item?.hours || '')}" maxlength="120" placeholder="如：每日 07:00–20:00" /></label>` : `<label>标签（逗号分隔）<input name="tags" value="${escapeHtml(shopTags(item || {}).join('、'))}" maxlength="120" placeholder="如：面食、饮品、夜宵" /></label><label>延时关门说明<input name="lateHours" value="${escapeHtml(item?.lateHours || '')}" maxlength="120" /></label><label>营业状态<select name="availability"><option value="open" ${currentStatus(item || {}, 'shop') === 'open' ? 'selected' : ''}>正常营业</option><option value="temporarily_closed" ${currentStatus(item || {}, 'shop') === 'temporarily_closed' ? 'selected' : ''}>暂示闭店</option><option value="unlisted" ${currentStatus(item || {}, 'shop') === 'unlisted' ? 'selected' : ''}>下架</option></select></label>`}<button class="button primary full" type="submit">保存资料</button></form></div></div>`;
 }
 
 function decisionModal() {
@@ -359,12 +395,12 @@ function shopContentModal() {
   if (context.kind === 'shop-content') {
     const dishes = shop.dishes.filter((entry) => entry.status !== 'archived');
     const photos = shop.photos.filter((entry) => entry.status !== 'archived');
-    return `<div class="modal-backdrop" data-action="close-modal"><div class="modal" role="dialog" aria-modal="true" aria-label="管理菜品和图片" data-stop><div class="modal-head"><div><span class="section-kicker">ADMIN CONTENT</span><h2>${escapeHtml(shop.name)} · 菜品与图片</h2></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div><div class="content-admin-section"><div class="block-head"><h3>菜品</h3><button class="mini-add" data-action="edit-dish" data-shop-id="${shop.id}">${icon('plus', 16)} 添加菜品</button></div>${dishes.length ? dishes.map((entry) => `<div class="manage-row"><span><b>${escapeHtml(entry.name)}</b><small>${entry.price ? `¥${escapeHtml(entry.price)}` : '价格待补充'}</small></span><button data-action="edit-dish" data-shop-id="${shop.id}" data-id="${entry.id}" aria-label="编辑${escapeHtml(entry.name)}">${icon('edit', 17)}</button><button data-action="remove-content" data-kind="dish" data-shop-id="${shop.id}" data-id="${entry.id}" aria-label="下架${escapeHtml(entry.name)}">${icon('trash', 17)}</button></div>`).join('') : '<p class="admin-list-empty">还没有菜品。</p>'}</div><div class="content-admin-section"><div class="block-head"><h3>图片</h3><button class="mini-add" data-action="edit-photo" data-shop-id="${shop.id}">${icon('plus', 16)} 添加图片</button></div>${photos.length ? photos.map((entry) => `<div class="manage-row"><span><b>${escapeHtml(entry.caption)}</b><small>本地预览图片</small></span><button data-action="edit-photo" data-shop-id="${shop.id}" data-id="${entry.id}" aria-label="编辑图片">${icon('edit', 17)}</button><button data-action="remove-content" data-kind="photo" data-shop-id="${shop.id}" data-id="${entry.id}" aria-label="下架图片">${icon('trash', 17)}</button></div>`).join('') : '<p class="admin-list-empty">还没有图片。</p>'}</div></div></div>`;
+    return `<div class="modal-backdrop" data-action="close-modal"><div class="modal" role="dialog" aria-modal="true" aria-label="管理菜品和图片" data-stop><div class="modal-head"><div><span class="section-kicker">ADMIN CONTENT</span><h2>${escapeHtml(shop.name)} · 菜品与图片</h2></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div><div class="content-admin-section"><div class="block-head"><h3>菜品</h3><button class="mini-add" data-action="edit-dish" data-shop-id="${shop.id}">${icon('plus', 16)} 添加菜品</button></div>${dishes.length ? dishes.map((entry) => `<div class="manage-row"><span><b>${escapeHtml(entry.name)}</b><small>${entry.price ? `¥${escapeHtml(entry.price)}` : '价格待补充'} · ${statusLabels[currentStatus(entry, 'dish')]}</small></span><button data-action="edit-dish" data-shop-id="${shop.id}" data-id="${entry.id}" aria-label="编辑${escapeHtml(entry.name)}">${icon('edit', 17)}</button><button data-action="remove-content" data-kind="dish" data-shop-id="${shop.id}" data-id="${entry.id}" aria-label="下架${escapeHtml(entry.name)}">${icon('trash', 17)}</button></div>`).join('') : '<p class="admin-list-empty">还没有菜品。</p>'}</div><div class="content-admin-section"><div class="block-head"><h3>图片</h3><button class="mini-add" data-action="edit-photo" data-shop-id="${shop.id}">${icon('plus', 16)} 添加图片</button></div>${photos.length ? photos.map((entry) => `<div class="manage-row"><span><b>${escapeHtml(entry.caption)}</b><small>本地预览图片</small></span><button data-action="edit-photo" data-shop-id="${shop.id}" data-id="${entry.id}" aria-label="编辑图片">${icon('edit', 17)}</button><button data-action="remove-content" data-kind="photo" data-shop-id="${shop.id}" data-id="${entry.id}" aria-label="下架图片">${icon('trash', 17)}</button></div>`).join('') : '<p class="admin-list-empty">还没有图片。</p>'}</div></div></div>`;
   }
   const isDish = context.kind === 'dish-editor';
   const item = context.id && (isDish ? shop.dishes : shop.photos).find((entry) => entry.id === context.id);
   const photoKind = item?.photoKind || (item?.dishId ? 'dish' : 'storefront');
-  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal narrow" role="dialog" aria-modal="true" aria-label="${isDish ? '编辑菜品' : '编辑图片'}" data-stop><div class="modal-head"><div><span class="section-kicker">ADMIN EDIT</span><h2>${item ? '编辑' : '添加'}${isDish ? '菜品' : '图片'}</h2></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div><form id="shop-content-form" class="modal-form"><input type="hidden" name="contentKind" value="${isDish ? 'dish' : 'photo'}"/><input type="hidden" name="shopId" value="${shop.id}"/><input type="hidden" name="entryId" value="${item?.id || ''}"/>${isDish ? `<label>菜品名称<input name="name" maxlength="60" required value="${escapeHtml(item?.name || '')}"/></label><label>参考价格<input name="price" maxlength="20" value="${escapeHtml(item?.price || '')}" placeholder="如 12.00"/></label><label>说明<textarea name="note" maxlength="200">${escapeHtml(item?.note || '')}</textarea></label><label>菜品照片（选填）<input name="photoFile" type="file" accept="image/png,image/jpeg,image/webp" /></label>` : `<label>图片类型<select name="photoKind" id="admin-photo-kind"><option value="storefront" ${photoKind === 'storefront' ? 'selected' : ''}>店铺门面</option><option value="dish" ${photoKind === 'dish' ? 'selected' : ''}>菜品照片</option></select></label><label id="admin-dish-wrap" class="${photoKind === 'dish' ? '' : 'is-hidden'}">对应菜品<select name="dishId" ${photoKind === 'dish' ? 'required' : ''}><option value="">请选择菜品</option>${shop.dishes.filter((dish) => dish.status !== 'archived').map((dish) => `<option value="${dish.id}" ${dish.id === item?.dishId ? 'selected' : ''}>${escapeHtml(dish.name)}</option>`).join('')}</select></label><p class="field-hint">门面图片无需关联菜品；菜品图片的说明自动取菜品名。</p><label>选择图片${item ? '（不选择则保留原图）' : ''}<input name="photoFile" type="file" accept="image/png,image/jpeg,image/webp" ${item ? '' : 'required'}/></label>`}<button class="button primary full" type="submit">保存${isDish ? '菜品' : '图片'}</button></form></div></div>`;
+  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal narrow" role="dialog" aria-modal="true" aria-label="${isDish ? '编辑菜品' : '编辑图片'}" data-stop><div class="modal-head"><div><span class="section-kicker">ADMIN EDIT</span><h2>${item ? '编辑' : '添加'}${isDish ? '菜品' : '图片'}</h2></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div><form id="shop-content-form" class="modal-form"><input type="hidden" name="contentKind" value="${isDish ? 'dish' : 'photo'}"/><input type="hidden" name="shopId" value="${shop.id}"/><input type="hidden" name="entryId" value="${item?.id || ''}"/>${isDish ? `<label>菜品名称<input name="name" maxlength="60" required value="${escapeHtml(item?.name || '')}"/></label><label>参考价格<input name="price" maxlength="20" value="${escapeHtml(item?.price || '')}" placeholder="如 12.00"/></label><label>说明<textarea name="note" maxlength="200">${escapeHtml(item?.note || '')}</textarea></label><label>供应状态<select name="availability"><option value="available" ${currentStatus(item || {}, 'dish') === 'available' ? 'selected' : ''}>可售</option><option value="unlisted" ${currentStatus(item || {}, 'dish') === 'unlisted' ? 'selected' : ''}>下架</option></select></label><label>菜品照片（选填）<input name="photoFile" type="file" accept="image/png,image/jpeg,image/webp" /></label>` : `<label>图片类型<select name="photoKind" id="admin-photo-kind"><option value="storefront" ${photoKind === 'storefront' ? 'selected' : ''}>店铺门面</option><option value="dish" ${photoKind === 'dish' ? 'selected' : ''}>菜品照片</option></select></label><label id="admin-dish-wrap" class="${photoKind === 'dish' ? '' : 'is-hidden'}">对应菜品<select name="dishId" ${photoKind === 'dish' ? 'required' : ''}><option value="">请选择菜品</option>${shop.dishes.filter((dish) => dish.status !== 'archived').map((dish) => `<option value="${dish.id}" ${dish.id === item?.dishId ? 'selected' : ''}>${escapeHtml(dish.name)}</option>`).join('')}</select></label><p class="field-hint">门面图片无需关联菜品；菜品图片的说明自动取菜品名。</p><label>选择图片${item ? '（不选择则保留原图）' : ''}<input name="photoFile" type="file" accept="image/png,image/jpeg,image/webp" ${item ? '' : 'required'}/></label>`}<button class="button primary full" type="submit">保存${isDish ? '菜品' : '图片'}</button></form></div></div>`;
 }
 
 function modal() {
@@ -383,8 +419,8 @@ function modal() {
 function tagsModal() {
   const shop = activeShops().find((item) => item.id === state.modal.shopId);
   if (!shop) return '';
-  const tags = shopTags(shop);
-  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal tags-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(shop.name)}的标签" data-stop><div class="modal-head"><div><span class="section-kicker">SHOP TAGS</span><h2>${escapeHtml(shop.name)} · 标签</h2><p>点击空白卡片可申请补充标签。</p></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div><div class="tag-gallery">${tags.map((tag) => `<div class="tag-gallery-item"><span class="shop-tag">${escapeHtml(tag)}</span><div class="tag-reactions"><button type="button" disabled title="赞同功能待开放" aria-label="赞同${escapeHtml(tag)}，功能待开放">${icon('heart', 17)} <small>赞同</small></button><button type="button" disabled title="反对功能待开放" aria-label="反对${escapeHtml(tag)}，功能待开放">${icon('brokenHeart', 17)} <small>反对</small></button></div></div>`).join('')}<button class="tag-gallery-add" data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-field="tags" data-canteen-id="${shop.canteenId}" data-shop-id="${shop.id}">${icon('plus', 24)}<b>添加标签</b><small>申请后由管理员审核</small></button></div><p class="tag-future-note">心形按钮为交互预留，赞同和反对目前尚未启用。</p></div></div>`;
+  const tags = (shop.tagRecords || []).filter((tag) => tag.status === 'active');
+  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal tags-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(shop.name)}的标签" data-stop><div class="modal-head"><div><span class="section-kicker">SHOP TAGS</span><h2>${escapeHtml(shop.name)} · 标签</h2><p>赞同有帮助的标签；反对达到门槛后，标签会隐藏并交给管理员复核。</p></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div><div class="tag-gallery">${tags.map((tag) => `<div class="tag-gallery-item"><span class="shop-tag">${escapeHtml(tag.name)}</span>${reactionButtons('tag', tag)}</div>`).join('')}<button class="tag-gallery-add" data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-field="tags" data-canteen-id="${shop.canteenId}" data-shop-id="${shop.id}">${icon('plus', 24)}<b>添加标签</b><small>申请后由管理员审核</small></button></div></div></div>`;
 }
 
 function galleryModal() {
@@ -404,6 +440,34 @@ function lightbox() {
   return `<div class="lightbox-backdrop" data-action="close-lightbox"><div class="lightbox-dialog" role="dialog" aria-modal="true" aria-label="放大查看图片" data-stop><button class="lightbox-close" data-action="close-lightbox" aria-label="关闭图片">${icon('close', 22)}</button><img src="${escapeHtml(url)}" alt="${escapeHtml(caption)}" /><div class="lightbox-caption"><strong>${escapeHtml(caption)}</strong><span>上传者：${escapeHtml(uploader)}</span></div></div></div>`;
 }
 
+let choiceCounter = 0;
+function refreshChoiceSelects(scope = root) {
+  for (const select of scope.querySelectorAll('.choice-select select')) {
+    const wrapper = select.closest('.choice-select');
+    const button = wrapper.querySelector('.choice-select-trigger');
+    const list = wrapper.querySelector('.choice-select-options');
+    const chosen = select.selectedOptions[0];
+    button.querySelector('span').textContent = chosen?.textContent || '请选择';
+    button.classList.toggle('placeholder', !select.value);
+    button.disabled = select.disabled;
+    list.innerHTML = [...select.options].map((option) => `<button type="button" role="option" data-action="choose-choice" data-value="${escapeHtml(option.value)}" aria-selected="${option.selected}" ${option.disabled ? 'disabled' : ''}>${escapeHtml(option.textContent)}</button>`).join('');
+  }
+}
+function upgradeSelects() {
+  for (const select of root.querySelectorAll('select:not(.choice-native)')) {
+    select.classList.add('choice-native');
+    select.setAttribute('aria-hidden', 'true');
+    select.tabIndex = -1;
+    if (!select.id) select.id = `choice-native-${++choiceCounter}`;
+    if (select.required) { select.dataset.requiredChoice = 'true'; select.required = false; }
+    const wrapper = document.createElement('div'); wrapper.className = 'choice-select';
+    const label = select.getAttribute('aria-label') || root.querySelector(`label[for="${select.id}"]`)?.textContent?.trim() || select.closest('label')?.childNodes[0]?.textContent?.trim() || '选择选项';
+    wrapper.innerHTML = `<button type="button" class="choice-select-trigger" data-action="toggle-choice" role="combobox" aria-label="${escapeHtml(label)}" aria-expanded="false" aria-controls="${select.id}-options"><span></span>${icon('chevron', 16)}</button><div class="choice-select-options" id="${select.id}-options" role="listbox" hidden></div>`;
+    select.parentNode.insertBefore(wrapper, select); wrapper.prepend(select);
+  }
+  refreshChoiceSelects();
+}
+
 function canteenPhotosModal() {
   const canteen = activeCanteens().find((item) => item.id === state.modal.id);
   if (!canteen) return '';
@@ -412,13 +476,15 @@ function canteenPhotosModal() {
 
 function render() {
   root.innerHTML = `${header()}${state.notice ? `<div class="toast" role="status">${escapeHtml(state.notice)}<button data-action="dismiss-notice" aria-label="关闭提示">${icon('close', 15)}</button></div>` : ''}${state.view === 'home' ? home() : state.view === 'directory' ? directoryView() : state.view === 'posts' ? postsView() : state.view === 'post-detail' ? postDetailView() : state.view === 'rules' ? rulesView() : state.view === 'canteen' ? canteenView() : state.view === 'shop' ? shopView() : state.view === 'dish' ? dishView() : state.view === 'contribute' ? contributeView() : state.view === 'admin' && actor()?.role === 'admin' ? adminView() : futureView()}${footer()}${profileSidebar()}${modal()}${lightbox()}`;
+  upgradeSelects();
   document.body.classList.toggle('modal-open', Boolean(state.modal || state.profileOpen || state.lightbox));
 }
 
-async function refresh() {
+async function refresh(initial = false) {
   state.storageMode = await repo.mode();
   await repo.expireProvisional();
   state.data = await repo.snapshot();
+  if (initial) loadRoute();
   render();
 }
 
@@ -428,7 +494,29 @@ function showNotice(message) {
   root.insertAdjacentHTML('afterbegin', `<div class="toast" role="status">${escapeHtml(message)}<button data-action="dismiss-notice" aria-label="关闭提示">${icon('close', 15)}</button></div>`);
   window.setTimeout(() => { if (state.notice === message) { state.notice = ''; root.querySelector('.toast')?.remove(); } }, 4200);
 }
-function go(view) { state.view = view; state.modal = null; state.lightbox = null; state.profileOpen = false; state.query = ''; window.scrollTo({ top: 0, behavior: 'smooth' }); render(); }
+function routePath() {
+  if (state.view === 'canteen' && state.canteenId) return `/canteens/${encodeURIComponent(state.canteenId)}`;
+  if (state.view === 'shop' && state.shopId) return `/shops/${encodeURIComponent(state.shopId)}`;
+  if (state.view === 'dish' && state.shopId && state.dishId) return `/shops/${encodeURIComponent(state.shopId)}/dishes/${encodeURIComponent(state.dishId)}`;
+  if (state.view === 'post-detail' && state.postId) return `/posts/${encodeURIComponent(state.postId)}`;
+  if (state.view === 'directory') return `/directory/${encodeURIComponent(state.campusId)}`;
+  return state.view === 'home' ? '/' : `/${state.view}`;
+}
+function loadRoute() {
+  const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  state.view = 'home';
+  if (parts[0] === 'canteens' && parts[1]) { state.view = 'canteen'; state.canteenId = parts[1]; state.campusId = state.data.canteens.find((item) => item.id === parts[1])?.campusId || state.campusId; }
+  else if (parts[0] === 'shops' && parts[1]) {
+    state.shopId = parts[1]; state.canteenId = state.data.shops.find((item) => item.id === parts[1])?.canteenId || null;
+    state.campusId = state.data.canteens.find((item) => item.id === state.canteenId)?.campusId || state.campusId;
+    state.view = parts[2] === 'dishes' && parts[3] ? 'dish' : 'shop'; state.dishId = parts[3] || null;
+  }
+  else if (parts[0] === 'posts' && parts[1]) { state.view = 'post-detail'; state.postId = parts[1]; }
+  else if (parts[0] === 'directory') { state.view = 'directory'; if (state.data.campuses.some((item) => item.id === parts[1])) state.campusId = parts[1]; }
+  else if (['posts', 'contribute', 'future', 'rules', 'admin'].includes(parts[0])) state.view = parts[0];
+}
+function go(view) { state.view = view; state.modal = null; state.lightbox = null; state.profileOpen = false; state.query = ''; history.pushState({}, '', routePath()); window.scrollTo({ top: 0, behavior: 'smooth' }); render(); }
+window.addEventListener('popstate', () => { if (!state.data) return; loadRoute(); state.modal = null; state.lightbox = null; state.profileOpen = false; render(); });
 
 function fuzzyMatch(text, query) {
   const haystack = text.toLocaleLowerCase();
@@ -452,6 +540,9 @@ root.addEventListener('mousedown', (event) => { if (event.target.closest('[data-
 root.addEventListener('focusin', (event) => { if (event.target.id === 'post-shop-search') updateShopOptions(event.target.value === root.querySelector('#post-shop-search')?.defaultValue ? '' : event.target.value); });
 
 root.addEventListener('keydown', (event) => {
+  const openChoice = event.target.closest('.choice-select.open');
+  if (event.key === 'Escape' && openChoice) { event.preventDefault(); openChoice.classList.remove('open'); openChoice.querySelector('.choice-select-options').hidden = true; openChoice.querySelector('.choice-select-trigger').setAttribute('aria-expanded', 'false'); openChoice.querySelector('.choice-select-trigger').focus(); return; }
+  if (event.key === 'ArrowDown' && event.target.matches('.choice-select-trigger')) { event.preventDefault(); if (!event.target.closest('.choice-select').classList.contains('open')) event.target.click(); event.target.closest('.choice-select').querySelector('.choice-select-options button')?.focus(); return; }
   if (event.key === 'Escape' && state.lightbox) { state.lightbox = null; render(); return; }
   if (event.target.id === 'post-shop-search') {
     if (event.key === 'ArrowDown') { event.preventDefault(); updateShopOptions(event.target.value); root.querySelector('#post-shop-options button')?.focus(); return; }
@@ -466,6 +557,7 @@ root.addEventListener('keydown', (event) => {
 });
 
 root.addEventListener('click', async (event) => {
+  if (!event.target.closest('.choice-select')) for (const wrapper of root.querySelectorAll('.choice-select.open')) { wrapper.classList.remove('open'); wrapper.querySelector('.choice-select-options').hidden = true; wrapper.querySelector('.choice-select-trigger').setAttribute('aria-expanded', 'false'); }
   if (event.target.matches('.rich-content img')) {
     const post = state.data.posts.find((entry) => entry.id === state.postId);
     state.lightbox = { url: event.target.src, caption: event.target.alt || '帖子图片', uploader: uploaderName(post?.ownerId, post?.author) }; render(); return;
@@ -473,13 +565,15 @@ root.addEventListener('click', async (event) => {
   const target = event.target.closest('[data-action], [data-view], [data-campus], [data-canteen], [data-shop], [data-dish], [data-post]');
   if (!target) return;
   if (target.matches('[data-stop]')) return;
+  if (target.dataset.campus) { state.campusId = target.dataset.campus; state.query = ''; if (target.dataset.view) go(target.dataset.view); else { history.pushState({}, '', routePath()); render(); } return; }
   if (target.dataset.view) { go(target.dataset.view); return; }
-  if (target.dataset.campus) { state.campusId = target.dataset.campus; state.query = ''; render(); return; }
   if (target.dataset.canteen) { state.canteenId = target.dataset.canteen; go('canteen'); return; }
   if (target.dataset.shop) { state.shopId = target.dataset.shop; go('shop'); return; }
   if (target.dataset.dish) { state.dishId = target.dataset.dish; state.shopId = target.dataset.shopId; go('dish'); return; }
   if (target.dataset.post) { state.postId = target.dataset.post; go('post-detail'); return; }
   const command = target.dataset.action;
+  if (command === 'toggle-choice') { const wrapper = target.closest('.choice-select'); const shouldOpen = !wrapper.classList.contains('open'); for (const other of root.querySelectorAll('.choice-select.open')) { other.classList.remove('open'); other.querySelector('.choice-select-options').hidden = true; other.querySelector('.choice-select-trigger').setAttribute('aria-expanded', 'false'); } wrapper.classList.toggle('open', shouldOpen); wrapper.querySelector('.choice-select-options').hidden = !shouldOpen; target.setAttribute('aria-expanded', String(shouldOpen)); return; }
+  if (command === 'choose-choice') { const wrapper = target.closest('.choice-select'); const select = wrapper.querySelector('select'); select.value = target.dataset.value; wrapper.classList.remove('open'); wrapper.querySelector('.choice-select-options').hidden = true; wrapper.querySelector('.choice-select-trigger').setAttribute('aria-expanded', 'false'); refreshChoiceSelects(wrapper); select.dispatchEvent(new Event('change', { bubbles: true })); return; }
   if (command === 'open-lightbox') { const photo = target.querySelector('img'); state.lightbox = { url: photo?.src || '', caption: target.dataset.caption || photo?.alt || '图片', uploader: uploaderName(target.dataset.ownerId, target.dataset.uploader) }; render(); return; }
   if (command === 'close-lightbox') { if (event.target.closest('[data-stop]') && target.classList.contains('lightbox-backdrop')) return; state.lightbox = null; render(); return; }
   if (command === 'pick-post-shop') { const shop = activeShops().find((entry) => entry.id === target.dataset.id); const canteen = activeCanteens().find((entry) => entry.id === shop?.canteenId); if (!shop) return; state.modal.selectedShopId = shop.id; root.querySelector('#post-shop-id').value = shop.id; root.querySelector('#post-shop-search').value = `${canteen?.name || '食堂'} · ${shop.name}`; root.querySelector('#post-shop-options').hidden = true; root.querySelector('#post-shop-search').setAttribute('aria-expanded', 'false'); return; }
@@ -491,6 +585,7 @@ root.addEventListener('click', async (event) => {
   if (command === 'go-contribute') { go('contribute'); return; }
   if (command === 'scroll-how') { document.querySelector('#how-it-works')?.scrollIntoView({ behavior: 'smooth' }); return; }
   if (command === 'open-post') { state.modal = { kind: 'post', selectedShopId: state.view === 'shop' || state.view === 'dish' ? state.shopId : null }; render(); return; }
+  if (command === 'select-admin-canteen') { state.adminCanteenId = target.dataset.id; render(); return; }
   if (command === 'open-tags') { state.modal = { kind: 'tags', shopId: target.dataset.shopId }; render(); return; }
   if (command === 'format-editor') {
     const editor = root.querySelector('#post-editor');
@@ -510,6 +605,8 @@ root.addEventListener('click', async (event) => {
   if (command === 'review') { state.modal = { kind: 'review', id: target.dataset.id, decision: target.dataset.decision }; render(); return; }
   if (command === 'remove-canteen' || command === 'remove-shop' || command === 'remove-content' || command === 'reset-preview') { state.modal = { kind: 'confirm', action: command, id: target.dataset.id, shopId: target.dataset.shopId, contentKind: target.dataset.kind }; render(); return; }
   try {
+    if (command === 'moderate') { await repo.moderateContent(target.dataset.kind, target.dataset.id, target.dataset.decision, state.actorId); await refresh(); showNotice('内容处理结果已保存。'); return; }
+    if (command === 'resolve-contested') { await repo.resolveContested(target.dataset.id, target.dataset.decision, state.actorId); await refresh(); showNotice('共建复核结果已保存。'); return; }
     if (command === 'react') { await repo.setReaction(target.dataset.kind, target.dataset.id, state.actorId, target.dataset.stance); await refresh(); return; }
     if (command === 'restore-entry') { await repo.restoreEntry(target.dataset.kind, target.dataset.id); await refresh(); showNotice('资料已恢复。'); return; }
     if (command === 'fix-provisional') { await repo.fixProvisional(target.dataset.id, state.actorId); await refresh(); showNotice('已固定收录。'); return; }
@@ -583,7 +680,8 @@ root.addEventListener('change', async (event) => {
     const dish = form.querySelector('[name="dishId"]');
     const isDish = event.target.value === 'dish';
     form.querySelector('#admin-dish-wrap').classList.toggle('is-hidden', !isDish);
-    dish.required = isDish;
+    dish.dataset.requiredChoice = isDish ? 'true' : '';
+    dish.required = false;
     if (!isDish) dish.value = '';
     return;
   }
@@ -611,12 +709,14 @@ root.addEventListener('change', async (event) => {
     if (event.target.id !== 'contrib-photo-kind') dishSelect.innerHTML = '<option value="">请选择菜品</option>' + dishes.map((dish) => `<option value="${dish.id}">${escapeHtml(dish.name)}</option>`).join('');
     const isDish = form.querySelector('#contrib-photo-kind').value === 'dish';
     form.querySelector('#contrib-dish-wrap').classList.toggle('is-hidden', !isDish);
-    dishSelect.required = isDish;
+    dishSelect.dataset.requiredChoice = isDish ? 'true' : '';
+    dishSelect.required = false;
     if (!isDish) dishSelect.value = '';
     form.querySelector('#dish-hint').textContent = isDish ? (dishes.length ? '菜品照片的说明直接使用菜品名称。' : '这家店还没有菜品，请先申请补充菜品。') : '门面照片无需关联菜品，图片说明为「店铺门面」。';
   }
   const names = [state.data.campuses.find((entry) => entry.id === campusId)?.name, activeCanteens().find((entry) => entry.id === canteenSelect?.value)?.name, activeShops().find((entry) => entry.id === shopSelect?.value)?.name, activeShops().flatMap((entry) => entry.dishes).find((entry) => entry.id === targetDishSelect?.value || entry.id === dishSelect?.value)?.name].filter(Boolean);
   form.querySelector('#contribution-target-text').textContent = names.join(' › ');
+  refreshChoiceSelects(form);
 });
 
 root.addEventListener('submit', async (event) => {
@@ -625,6 +725,7 @@ root.addEventListener('submit', async (event) => {
   const form = event.target;
   const values = Object.fromEntries(new FormData(form).entries());
   try {
+    if ([...form.querySelectorAll('select[data-required-choice="true"]')].some((select) => !select.value)) throw new Error('请先选择完整的目标信息。');
     if (form.id === 'contribution-form' || form.id === 'post-form') {
       if (values.photoFile instanceof File && values.photoFile.size) {
         values.photo = await imageAsDataUrl(values.photoFile);
@@ -683,7 +784,7 @@ root.addEventListener('submit', async (event) => {
   } catch (error) { showNotice(error.message || '提交失败，请重试。'); }
 });
 
-refresh().catch((error) => { root.innerHTML = `<main class="wrap missing-view"><h1>页面暂时无法加载</h1><p>${escapeHtml(error.message)}</p></main>`; });
+refresh(true).catch((error) => { root.innerHTML = `<main class="wrap missing-view"><h1>页面暂时无法加载</h1><p>${escapeHtml(error.message)}</p></main>`; });
 
 window.setInterval(async () => {
   try {
