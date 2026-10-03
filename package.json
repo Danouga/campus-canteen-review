@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",
-    "check": "node --check src/app.js && node --check src/repository.js && node --check src/api-repository.js && node --check src/content-filter.js && node --check server.mjs"
+    "check": "node --check src/app.js && node --check src/repository.js && node --check src/api-repository.js && node --check src/rich-text.js && node --check src/content-filter.js && node --check db.mjs && node --check server.mjs"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.5"
   }
 }
