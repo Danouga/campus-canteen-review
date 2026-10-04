@@ -269,6 +269,18 @@ export class LocalRepository {
     write(data, this.storage);
   }
 
+  async markAllReviewMessagesRead(actorId) {
+    requireActor(actorId);
+    const data = read(this.storage);
+    const unread = data.contributions.filter((entry) => entry.ownerId === actorId && entry.status !== 'pending' && !entry.notificationReadAt);
+    if (unread.length) {
+      const readAt = new Date().toISOString();
+      for (const item of unread) item.notificationReadAt = readAt;
+      write(data, this.storage);
+    }
+    return unread.length;
+  }
+
   async saveCampus(campusId, name) {
     const data = read(this.storage);
     const campus = data.campuses.find((entry) => entry.id === campusId);

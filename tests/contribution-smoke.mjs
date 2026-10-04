@@ -130,4 +130,17 @@ await assert.rejects(
   repo.submitContribution({ ...base, campusId: 'campus-b', type: 'field-update', targetKind: 'shop', changes: { location: '二楼' } }),
   /不匹配/
 );
+await repo.submitContribution({ ...base, type: 'field-update', targetKind: 'shop', changes: { location: '待审核位置' } });
+const pendingMessageId = (await repo.snapshot()).contributions[0].id;
+await repo.submitContribution({ campusId: 'campus-a', canteenId, shopId, actorId: 'demo-viewer', type: 'field-update', targetKind: 'shop', changes: { lateHours: '21:00' } });
+const viewerMessageId = (await repo.snapshot()).contributions[0].id;
+await repo.reviewContribution(viewerMessageId, 'fixed', '', 'demo-admin');
+assert.equal(await repo.markAllReviewMessagesRead('demo-author') > 0, true);
+state = await repo.snapshot();
+assert.equal(state.contributions.find((entry) => entry.id === pendingMessageId).notificationReadAt, null);
+assert.equal(state.contributions.find((entry) => entry.id === viewerMessageId).notificationReadAt, null);
+assert.equal(state.contributions.filter((entry) => entry.ownerId === 'demo-author' && entry.status !== 'pending' && !entry.notificationReadAt).length, 0);
+assert.equal(await repo.markAllReviewMessagesRead('demo-author'), 0);
+assert.equal(await repo.markAllReviewMessagesRead('demo-viewer'), 1);
+assert.ok((await repo.snapshot()).contributions.find((entry) => entry.id === viewerMessageId).notificationReadAt);
 console.log('Contributions, review messages, ownership, dish photos and comments passed.');

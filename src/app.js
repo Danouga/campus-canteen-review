@@ -242,8 +242,9 @@ function contributeView() {
 
 function profileMessages() {
   const entries = state.data.contributions.filter((entry) => entry.ownerId === state.actorId);
+  const unread = entries.filter((entry) => entry.status !== 'pending' && !entry.notificationReadAt).length;
   const labels = { pending: '等待审核', provisional: '暂示中', fixed: '已固定收录', contested: '固定资料待复核', revoked: '已撤销收录', rejected: '未通过', expired: '暂示已结束' };
-  return `<div class="profile-section-intro"><h3>我的消息</h3><p>共建申请的审核结果会显示在这里。</p></div><div class="profile-message-list">${entries.length ? entries.map((entry) => `<article class="message-card ${entry.status !== 'pending' && !entry.notificationReadAt ? 'unread' : ''}"><div><span class="status-pill">${labels[entry.status] || entry.status}</span><small>${dateLabel(entry.reviewedAt || entry.submittedAt)}</small></div><h2>${escapeHtml(entry.title)}</h2><p>${entry.status === 'pending' ? '申请已送达管理员工作台。' : entry.reviewNote ? escapeHtml(entry.reviewNote) : '管理员已处理这条申请。'}</p>${entry.status !== 'pending' && !entry.notificationReadAt ? `<button class="text-action" data-action="mark-message-read" data-id="${entry.id}">标为已读 ${icon('check', 15)}</button>` : ''}</article>`).join('') : '<div class="profile-empty">还没有共建申请。提交后可在这里查看审核消息。</div>'}</div>`;
+  return `<div class="profile-section-intro profile-message-head"><div><h3>我的消息</h3><p>共建申请的审核结果会显示在这里。</p></div>${unread ? `<button type="button" class="profile-mark-all" data-action="mark-all-messages-read">全部标为已读（${unread}）</button>` : ''}</div><div class="profile-message-list">${entries.length ? entries.map((entry) => `<article class="message-card ${entry.status !== 'pending' && !entry.notificationReadAt ? 'unread' : ''}"><div><span class="status-pill">${labels[entry.status] || entry.status}</span><small>${dateLabel(entry.reviewedAt || entry.submittedAt)}</small></div><h2>${escapeHtml(entry.title)}</h2><p>${entry.status === 'pending' ? '申请已送达管理员工作台。' : entry.reviewNote ? escapeHtml(entry.reviewNote) : '管理员已处理这条申请。'}</p>${entry.status !== 'pending' && !entry.notificationReadAt ? `<button class="text-action" data-action="mark-message-read" data-id="${entry.id}">标为已读 ${icon('check', 15)}</button>` : ''}</article>`).join('') : '<div class="profile-empty">还没有共建申请。提交后可在这里查看审核消息。</div>'}</div>`;
 }
 
 function profilePublications() {
@@ -726,6 +727,7 @@ root.addEventListener('click', async (event) => {
     if (command === 'fix-provisional') { await repo.fixProvisional(target.dataset.id, state.actorId); await refresh(); showNotice('已固定收录。'); return; }
     if (command === 'revoke-provisional') { await repo.revokeProvisional(target.dataset.id, state.actorId); await refresh(); showNotice('暂示已撤销。'); return; }
     if (command === 'mark-message-read') { await repo.markReviewMessageRead(target.dataset.id, state.actorId); await refresh(); return; }
+    if (command === 'mark-all-messages-read') { await repo.markAllReviewMessagesRead(state.actorId); await refresh(); return; }
     if (command === 'delete-own') { await repo.deleteOwnContent(target.dataset.kind, target.dataset.id, state.actorId); state.modal = null; if (target.dataset.kind === 'post') { state.view = 'posts'; history.pushState({}, '', routePath()); } await refresh(); showNotice('已删除自己发布的内容。'); return; }
     if (command === 'remove-canteen-photo') { await repo.removeCanteenPhoto(target.dataset.canteenId, target.dataset.id); state.modal = { kind: 'canteen-photos', id: target.dataset.canteenId }; await refresh(); showNotice('照片已下架。'); return; }
     if (command === 'confirm-operation') {

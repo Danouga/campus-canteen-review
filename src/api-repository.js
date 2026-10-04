@@ -29,6 +29,7 @@ export class ApiRepository {
   fixProvisional(id, actorId) { return this.invoke('fixProvisional', id, actorId); }
   revokeProvisional(id, actorId) { return this.invoke('revokeProvisional', id, actorId); }
   markReviewMessageRead(id, actorId) { return this.invoke('markReviewMessageRead', id, actorId); }
+  markAllReviewMessagesRead(actorId) { return this.invoke('markAllReviewMessagesRead', actorId); }
   expireProvisional() { return this.invoke('expireProvisional'); }
   saveCampus(id, name) { return this.invoke('saveCampus', id, name); }
   saveCanteen(input) { return this.invoke('saveCanteen', input); }
