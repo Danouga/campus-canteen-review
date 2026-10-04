@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { LocalRepository, recommendationPeriod, recommendationSummary } from '../src/repository.js';
+import { LocalRepository, recommendationLedger, recommendationPeriod, recommendationSummary } from '../src/repository.js';
 
 const KEY = 'canteen-guide-mvp-v1';
 const values = new Map();
@@ -15,6 +15,8 @@ const newWeek = recommendationSummary(pastWeek, 'demo-author', new Date('2026-10
 assert.equal(newWeek.weeklyVotes.length, 0);
 assert.equal(newWeek.bonus, 1);
 assert.equal(newWeek.baseRemaining, 1);
+assert.equal(recommendationLedger(pastWeek, 'demo-author').points, 1);
+assert.equal(recommendationLedger(pastWeek, 'demo-author').votes[0].sourceInferred, true);
 
 await repo.saveCanteen({ campusId: 'campus-a', name: '测试食堂' });
 let data = await snapshot();
@@ -37,7 +39,10 @@ await repo.reviewContribution(data.contributions[0].id, 'fixed', '', 'demo-admin
 data = await snapshot();
 assert.equal(recommendationSummary(data, 'demo-author').bonus, 1);
 await repo.castRecommendationVote(firstShop.id, 'demo-author');
-assert.equal((await snapshot()).recommendationVotes.at(-1).source, 'bonus');
+data = await snapshot();
+assert.equal(data.recommendationVotes.at(-1).source, 'bonus');
+assert.equal(data.recommendationVotes.at(-1).rewardKey, `contribution:${data.contributions[0].id}`);
+assert.equal(recommendationLedger(data, 'demo-author').points, 2);
 
 await repo.addComment('shop', firstShop.id, 'demo-author', '值得推荐');
 data = await snapshot();
@@ -48,6 +53,7 @@ data = await snapshot();
 assert.equal(data.recommendationRewards.filter((entry) => entry.key === `comment:${commentId}`).length, 1);
 await repo.setReaction('comment', commentId, 'demo-viewer', 'agree'); // 撤销赞同不收回已经发放的票
 await repo.setReaction('comment', commentId, 'demo-viewer', 'agree');
+for (let index = 0; index < 3; index++) { await repo.setReaction('comment', commentId, 'demo-viewer', 'agree'); await repo.setReaction('comment', commentId, 'demo-viewer', 'agree'); }
 assert.equal((await snapshot()).recommendationRewards.filter((entry) => entry.key === `comment:${commentId}`).length, 1);
 
 await repo.submitPost({ shopId: firstShop.id, actorId: 'demo-author', title: '测试帖子', body: '这家店值得试试' });
@@ -57,6 +63,9 @@ update((state) => { for (let index = 0; index < 9; index++) state.reactions.push
 await repo.setReaction('post', postId, 'demo-viewer', 'agree');
 data = await snapshot();
 assert.equal(data.recommendationRewards.filter((entry) => entry.key === `post:${postId}`).length, 1);
+await repo.setReaction('post', postId, 'demo-viewer', 'agree');
+await repo.setReaction('post', postId, 'demo-viewer', 'agree');
+assert.equal((await snapshot()).recommendationRewards.filter((entry) => entry.key === `post:${postId}`).length, 1);
 
 await repo.castRecommendationVote(firstShop.id, 'demo-author');
 await assert.rejects(repo.castRecommendationVote(firstShop.id, 'demo-author'), /最多投 3 张/);
@@ -64,9 +73,34 @@ await repo.castRecommendationVote(secondShop.id, 'demo-author');
 data = await snapshot();
 assert.equal(recommendationSummary(data, 'demo-author').available, 0);
 assert.equal(recommendationSummary(data, 'demo-author').weeklyVotes.length, 4);
+assert.equal(recommendationLedger(data, 'demo-author').points, 4);
+assert.deepEqual(data.recommendationVotes.filter((item) => item.source === 'bonus').map((item) => item.rewardKey), [`contribution:${data.contributions[0].id}`, `comment:${commentId}`, `post:${postId}`]);
 assert.equal(recommendationSummary(data, 'demo-author', new Date(Date.now() + 24 * 60 * 60 * 1000)).baseRemaining, 1);
 assert.equal(recommendationSummary(data, 'demo-viewer').baseRemaining, 1);
 await assert.rejects(repo.castRecommendationVote('missing', 'demo-author'), /不能接收/);
 await assert.rejects(repo.castRecommendationVote(firstShop.id, 'fake-user'), /演示身份/);
+
+await repo.addComment('shop', firstShop.id, 'demo-author', '测试不同用户计数');
+data = await snapshot();
+const distinctCommentId = data.comments[0].id;
+update((state) => {
+  for (let index = 0; index < 4; index++) state.reactions.push({ targetKind: 'comment', targetId: distinctCommentId, actorId: 'same-reader', stance: 'agree' });
+  state.reactions.push({ targetKind: 'comment', targetId: distinctCommentId, actorId: 'demo-author', stance: 'agree' });
+});
+assert.equal((await snapshot()).recommendationRewards.some((entry) => entry.key === `comment:${distinctCommentId}`), false);
+await repo.setReaction('comment', distinctCommentId, 'demo-viewer', 'agree');
+update((state) => { for (const actorId of ['reader-a', 'reader-b']) state.reactions.push({ targetKind: 'comment', targetId: distinctCommentId, actorId, stance: 'agree' }); });
+assert.equal((await snapshot()).recommendationRewards.some((entry) => entry.key === `comment:${distinctCommentId}`), false);
+await repo.setReaction('comment', distinctCommentId, 'demo-admin', 'agree');
+assert.equal((await snapshot()).recommendationRewards.filter((entry) => entry.key === `comment:${distinctCommentId}`).length, 1);
+
+const parallelValues = new Map();
+const parallelRepo = new LocalRepository({ getItem: (key) => parallelValues.get(key) || null, setItem: (key, value) => parallelValues.set(key, value), removeItem: (key) => parallelValues.delete(key) });
+await parallelRepo.saveCanteen({ campusId: 'campus-a', name: '并发测试食堂' });
+await parallelRepo.saveShop({ canteenId: (await parallelRepo.snapshot()).canteens[0].id, name: '并发测试店铺' });
+const parallelShopId = (await parallelRepo.snapshot()).shops[0].id;
+const attempts = await Promise.allSettled(Array.from({ length: 5 }, () => parallelRepo.castRecommendationVote(parallelShopId, 'demo-viewer')));
+assert.equal(attempts.filter((entry) => entry.status === 'fulfilled').length, 1);
+assert.equal((await parallelRepo.snapshot()).recommendationVotes.length, 1);
 
 console.log('推荐票：每日基础票、奖励票、单店上限、周榜、重复奖励和身份校验均通过。');

@@ -1,4 +1,4 @@
-import { createRepository, demoUsers, recommendationSummary } from './repository.js';
+import { createRepository, demoUsers, recommendationLedger, recommendationSummary } from './repository.js';
 import { screenComment, filterVersion } from './content-filter.js';
 import { sanitizeRichHtml, plainTextFromRichHtml } from './rich-text.js';
 import { imageAsDataUrl } from './image-compression.js';
@@ -6,12 +6,13 @@ import { imageAsDataUrl } from './image-compression.js';
 const repo = createRepository();
 const root = document.querySelector('#app');
 const savedActorId = localStorage.getItem('canteen-guide-demo-actor');
-const state = { data: null, actorId: demoUsers.some((user) => user.id === savedActorId) ? savedActorId : 'demo-author', campusId: 'campus-a', view: 'home', canteenId: null, shopId: null, dishId: null, postId: null, postFilters: { campusId: '', canteenId: '', shopId: '', sort: 'newest' }, query: '', modal: null, lightbox: null, commentSort: 'newest', adminCanteenId: null, profileOpen: false, profileTab: 'overview', notice: '', storageMode: 'local' };
+const state = { data: null, actorId: demoUsers.some((user) => user.id === savedActorId) ? savedActorId : 'demo-author', campusId: 'campus-a', view: 'home', canteenId: null, shopId: null, dishId: null, postId: null, postFilters: { campusId: '', canteenId: '', shopId: '', sort: 'newest' }, moderationFilters: { kind: 'all', status: 'all', sort: 'newest', query: '', limit: 12 }, profileLedgerLimit: { rewards: 20, votes: 20 }, query: '', modal: null, lightbox: null, commentSort: 'newest', adminCanteenId: null, profileOpen: false, profileTab: 'overview', notice: '', storageMode: 'local' };
 
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 const thumbnailUrl = (url, width = 320) => /^\/api\/media\/[a-f0-9]{64}$/.test(url || '') ? `${url}?w=${width}` : url;
 const thumbImg = (url, alt, width = 320, eager = false) => `<img src="${escapeHtml(thumbnailUrl(url, width))}" alt="${escapeHtml(alt)}" loading="${eager ? 'eager' : 'lazy'}" decoding="async" ${eager ? 'fetchpriority="high"' : ''} />`;
 const dateLabel = (value) => value ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '—';
+const fullDateLabel = (value) => value ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '时间未记录';
 const campus = () => state.data.campuses.find((item) => item.id === state.campusId);
 const activeCanteens = () => state.data.canteens.filter((item) => item.status === 'active');
 const activeShops = () => state.data.shops.filter((item) => item.status === 'active');
@@ -24,8 +25,11 @@ const postMarkup = (post) => post.contentHtml ? sanitizeRichHtml(post.contentHtm
 const storageName = () => state.storageMode === 'mysql' ? 'MySQL 预览库' : '当前浏览器';
 const uploaderName = (ownerId, fallback) => demoUsers.find((user) => user.id === ownerId)?.name || fallback || '上传者未记录';
 function reactionInfo(kind, targetId) {
-  const reactions = (state.data.reactions || []).filter((entry) => entry.targetKind === kind && entry.targetId === targetId);
-  return { agree: reactions.filter((entry) => entry.stance === 'agree').length, disagree: reactions.filter((entry) => entry.stance === 'disagree').length, mine: reactions.find((entry) => entry.actorId === state.actorId)?.stance };
+  const ownerId = kind === 'comment' ? state.data.comments.find((item) => item.id === targetId)?.ownerId : kind === 'post' ? state.data.posts.find((item) => item.id === targetId)?.ownerId : kind === 'contribution' ? state.data.contributions.find((item) => item.id === targetId)?.ownerId : state.data.shops.flatMap((shop) => shop.tagRecords || []).find((item) => item.id === targetId)?.ownerId;
+  const latestByActor = new Map();
+  for (const entry of state.data.reactions || []) if (entry.targetKind === kind && entry.targetId === targetId && entry.actorId && entry.actorId !== ownerId) latestByActor.set(entry.actorId, entry.stance);
+  const votes = [...latestByActor.values()];
+  return { agree: votes.filter((stance) => stance === 'agree').length, disagree: votes.filter((stance) => stance === 'disagree').length, mine: latestByActor.get(state.actorId) };
 }
 function reactionButtons(kind, item) {
   const counts = reactionInfo(kind, item.id);
@@ -85,7 +89,6 @@ function home() {
   const totalShops = activeShops().length;
   return `<main>
     <section class="hero wrap"><div class="hero-copy"><span class="eyebrow"><span class="eyebrow-line"></span> A LITTLE GUIDE TO CAMPUS FOOD</span><h1>好味道，<br><em>一起慢慢发现。</em></h1><p>从两校区的食堂开始，记录每一家值得认识的店。资料可以由你补充，也会经过管理员确认。</p><div class="hero-actions"><button class="button primary" data-view="directory">${icon('bowl', 19)} 浏览食堂</button><button class="button subtle" data-action="scroll-how">了解共建方式 ${icon('arrow', 18)}</button></div><div class="hero-metrics"><div><strong>02</strong><span>个校区</span></div><i></i><div><strong>${String(activeCanteens().length).padStart(2, '0')}</strong><span>个已收录食堂</span></div><i></i><div><strong>${String(totalShops).padStart(2, '0')}</strong><span>家已收录店铺</span></div></div></div><div class="hero-art" aria-hidden="true"><span class="art-ring ring-one"></span><span class="art-ring ring-two"></span><span class="art-orbit orbit-one"></span><span class="art-orbit orbit-two"></span><div class="plate"><div class="plate-inner"><span class="rice-grain grain-1"></span><span class="rice-grain grain-2"></span><span class="rice-grain grain-3"></span><span class="rice-grain grain-4"></span><span class="rice-grain grain-5"></span><span class="leaf-piece leaf-a"></span><span class="leaf-piece leaf-b"></span><span class="leaf-piece leaf-c"></span><span class="egg"></span><span class="carrot carrot-a"></span><span class="carrot carrot-b"></span><span class="carrot carrot-c"></span></div></div><div class="art-note"><span class="note-icon">${icon('spark', 18)}</span><span>下一家好店<br><b>也许由你发现</b></span></div></div></section>
-    <section class="directory-teaser wrap"><div><span class="section-kicker">EXPLORE THE CANTEENS</span><h2>两校区食堂，单独逛一逛。</h2><p>按校区浏览已收录食堂，也可以为还空着的位置申请补充。</p></div><button class="button outline" data-view="directory">进入食堂展示 ${icon('arrow', 18)}</button></section>
     <section class="home-ranking wrap"><div class="detail-section-head"><div><span class="section-kicker">THIS WEEK'S PICKS</span><h2>本周大家推荐的店铺</h2></div><button class="button outline small" data-view="ranking">查看完整榜单 ${icon('arrow', 16)}</button></div><div class="home-ranking-list">${rankingRows(3)}</div></section>
     <section class="steps-section" id="how-it-works"><div class="wrap steps-inner"><div class="steps-intro"><span class="section-kicker">BUILD IT TOGETHER</span><h2>你的一次补充，<br>让下一餐更容易。</h2><p>不必一次写得很完整。店名、位置、菜单或者营业时间，任何一条真实信息都很有帮助。</p>${action(`一起共建 ${icon('arrow', 17)}`, 'go-contribute')}</div><div class="steps-list"><div class="step"><span>01</span><div><b>选择目标</b><p>选好校区、食堂和店铺，确认信息加在哪里。</p></div></div><div class="step"><span>02</span><div><b>提交信息</b><p>填写你知道的部分，图片可用于菜品展示。</p></div></div><div class="step"><span>03</span><div><b>管理员确认</b><p>审核后暂时展示，或直接收录。</p></div></div></div></div></section>
   </main>`;
@@ -250,20 +253,44 @@ function profilePublications() {
   return `<div class="profile-section-intro"><h3>我的发布</h3><p>当前可查看自己发布的美食贴，更多管理入口后续补充。</p></div><div class="profile-stats"><div><strong>${posts.length}</strong><span>美食贴</span></div><div><strong>${comments.length}</strong><span>评论</span></div><div><strong>${photos.length}</strong><span>照片</span></div></div>${posts.length ? `<div class="profile-post-list">${posts.slice(0, 8).map((post) => `<button data-post="${post.id}"><b>${escapeHtml(post.title)}</b><small>${dateLabel(post.createdAt)} ${icon('arrow', 15)}</small></button>`).join('')}</div>` : '<div class="profile-empty">还没有发布美食贴。</div>'}`;
 }
 
+function profileVoteLedger() {
+  const ledger = recommendationLedger(state.data, state.actorId);
+  const summary = recommendationSummary(state.data, state.actorId);
+  const rewardLabel = (reward) => {
+    if (!reward) return '历史额外票（来源未关联）';
+    const item = reward.sourceKind === 'comment' ? state.data.comments.find((entry) => entry.id === reward.sourceId) : reward.sourceKind === 'post' ? state.data.posts.find((entry) => entry.id === reward.sourceId) : state.data.contributions.find((entry) => entry.id === reward.sourceId);
+    const kind = { comment: '评论获赞', post: '美食贴获赞', contribution: '共建固定' }[reward.sourceKind] || '额外票奖励';
+    const title = item?.title || item?.body || '原内容已移除';
+    return `${kind} · ${title.slice(0, 42)}`;
+  };
+  const rewards = [...ledger.rewards].reverse();
+  const votes = [...ledger.votes].reverse();
+  const rewardByKey = new Map(ledger.rewards.map((entry) => [entry.key, entry]));
+  const rewardRows = rewards.slice(0, state.profileLedgerLimit.rewards).map((entry) => `<li><div><b>${escapeHtml(rewardLabel(entry))}</b><small>${fullDateLabel(entry.createdAt)}${entry.inferred ? ' · 旧记录消耗对应关系为推定' : ''}</small></div><span class="${entry.used ? 'ledger-used' : 'ledger-credit'}">${entry.used ? '已使用' : '+1 张'}</span></li>`).join('') || '<li class="ledger-empty">暂无额外票奖励。</li>';
+  const voteRows = votes.slice(0, state.profileLedgerLimit.votes).map((entry) => {
+    const shop = state.data.shops.find((item) => item.id === entry.shopId);
+    const reward = rewardByKey.get(entry.appliedRewardKey);
+    const source = entry.source === 'base' ? '每日基础票' : rewardLabel(reward);
+    return `<li><div><b>投给 ${escapeHtml(shop?.name || '已下架店铺')}</b><small>${fullDateLabel(entry.createdAt)} · ${escapeHtml(source)}${entry.sourceInferred ? '（旧记录推定）' : ''}</small></div><span class="ledger-debit">−1 张</span></li>`;
+  }).join('') || '<li class="ledger-empty">还没有投出推荐票。</li>';
+  return `<div class="profile-ledger"><button class="profile-ledger-back" data-action="profile-tab" data-tab="overview">${icon('arrow', 15)} 返回概览</button><div class="profile-section-intro"><h3>推荐票明细</h3><p>今天的基础票每日更新；额外票按奖励记录保留。旧投票若未记录具体奖励来源，会按发放顺序推定。</p></div><div class="profile-ledger-summary"><div><strong>${summary.available}</strong><span>当前可投</span></div><div><strong>${summary.baseRemaining}</strong><span>今日基础票</span></div><div><strong>${summary.bonus}</strong><span>额外票</span></div></div><section><h4>额外票来源 <span>${rewards.length}</span></h4><ul>${rewardRows}</ul>${rewards.length > state.profileLedgerLimit.rewards ? '<button class="profile-ledger-more" data-action="ledger-more" data-kind="rewards">查看更多来源</button>' : ''}</section><section><h4>投票消耗 <span>${votes.length}</span></h4><ul>${voteRows}</ul>${votes.length > state.profileLedgerLimit.votes ? '<button class="profile-ledger-more" data-action="ledger-more" data-kind="votes">查看更多记录</button>' : ''}</section></div>`;
+}
+
 function profileSidebar() {
   if (!state.profileOpen) return '';
   const count = unreadCount();
   const votes = recommendationSummary(state.data, state.actorId);
-  const tab = (name, label) => `<button class="profile-tab ${state.profileTab === name ? 'active' : ''}" data-action="profile-tab" data-tab="${name}">${label}${name === 'messages' && count ? `<span class="nav-count">${count}</span>` : ''}</button>`;
-  return `<div class="profile-backdrop" data-action="close-profile"><aside class="profile-sidebar" role="dialog" aria-modal="true" aria-label="用户信息" data-stop><div class="profile-top"><div><span class="section-kicker">MY SPACE</span><h2>用户信息</h2></div><button class="icon-button" data-action="close-profile" aria-label="关闭用户信息">${icon('close', 20)}</button></div><div class="profile-identity"><span class="profile-avatar">${escapeHtml(actor()?.name?.slice(0, 1) || '用')}</span><div><b>${escapeHtml(actor()?.name || '用户')}</b><small>演示身份 · 尚未接入学校登录</small></div></div><label class="profile-switch">切换演示身份<select id="demo-actor" aria-label="切换演示身份">${demoUsers.map((user) => `<option value="${user.id}" ${user.id === state.actorId ? 'selected' : ''}>${user.name}</option>`).join('')}</select></label><nav class="profile-tabs" aria-label="用户信息栏目">${tab('overview', '概览')}${tab('messages', '我的消息')}${tab('publications', '我的发布')}</nav><div class="profile-body">${state.profileTab === 'messages' ? profileMessages() : state.profileTab === 'publications' ? profilePublications() : `<div class="profile-section-intro"><h3>你好，${escapeHtml(actor()?.name || '用户')}</h3><p>共建记录和发布内容会逐步汇集到这里。</p></div><div class="profile-vote-card"><span>我的推荐票</span><strong>${votes.available}</strong><small>今日基础票 ${votes.baseRemaining} 张 · 可保留额外票 ${votes.bonus} 张</small></div><button class="button outline small profile-ranking-link" data-view="ranking">查看本周推荐榜 ${icon('arrow', 16)}</button>`}</div></aside></div>`;
+  const points = recommendationLedger(state.data, state.actorId).points;
+  const tab = (name, label) => `<button class="profile-tab ${state.profileTab === name || name === 'overview' && state.profileTab === 'vote-ledger' ? 'active' : ''}" data-action="profile-tab" data-tab="${name}">${label}${name === 'messages' && count ? `<span class="nav-count">${count}</span>` : ''}</button>`;
+  return `<div class="profile-backdrop" data-action="close-profile"><aside class="profile-sidebar" role="dialog" aria-modal="true" aria-label="用户信息" data-stop><div class="profile-top"><div><span class="section-kicker">MY SPACE</span><h2>用户信息</h2></div><button class="icon-button" data-action="close-profile" aria-label="关闭用户信息">${icon('close', 20)}</button></div><div class="profile-identity"><span class="profile-avatar">${escapeHtml(actor()?.name?.slice(0, 1) || '用')}</span><div><b>${escapeHtml(actor()?.name || '用户')}</b><small>演示身份 · 尚未接入学校登录</small></div></div><label class="profile-switch">切换演示身份<select id="demo-actor" aria-label="切换演示身份">${demoUsers.map((user) => `<option value="${user.id}" ${user.id === state.actorId ? 'selected' : ''}>${user.name}</option>`).join('')}</select></label><nav class="profile-tabs" aria-label="用户信息栏目">${tab('overview', '概览')}${tab('messages', '我的消息')}${tab('publications', '我的发布')}</nav><div class="profile-body">${state.profileTab === 'messages' ? profileMessages() : state.profileTab === 'publications' ? profilePublications() : state.profileTab === 'vote-ledger' ? profileVoteLedger() : `<div class="profile-section-intro"><h3>你好，${escapeHtml(actor()?.name || '用户')}</h3><p>共建记录和发布内容会逐步汇集到这里。</p></div><button class="profile-vote-card" data-action="profile-tab" data-tab="vote-ledger" aria-label="查看推荐票来源与消耗明细"><span>我的推荐票 ${icon('chevron', 16)}</span><strong>${votes.available}</strong><small>今日基础票 ${votes.baseRemaining} 张 · 可保留额外票 ${votes.bonus} 张</small></button><div class="profile-points-card"><span>我的积分 <small>试行</small></span><strong>${points}</strong><p>暂按每投 1 张推荐票获得 1 积分计算。兑换校园周边或学习用品等功能尚未开放。</p></div><button class="button outline small profile-ranking-link" data-view="ranking">查看本周推荐榜 ${icon('arrow', 16)}</button>`}</div></aside></div>`;
 }
 
 function rulesView() {
   return `<main class="wrap content-page rules-page"><div class="page-intro"><span class="section-kicker">COMMUNITY GUIDE</span><h1>网站评价规则</h1><p>用真实、具体的信息帮助同学选择下一餐。本站不设置打分。以下规则会明确标出当前已启用的部分和后续草案。</p></div><div class="rules-grid">
     <section><span>01 · 已启用</span><h2>发布与共建</h2><p>店铺、菜品和美食贴可以评论，暂不开放回复。评论和帖子提交时使用演示屏蔽词筛选；共建申请由管理员审核，可暂示 24 小时或直接收录。</p></section>
     <section><span>02 · 演示中</span><h2>赞同与反对</h2><p>标签、评论、帖子与共建信息可赞同或反对。每个演示身份对同一内容只保留一次有效态度，可撤销或改选；不能给自己的内容表态。</p></section>
-    <section><span>03 · 演示中</span><h2>隐藏与复核</h2><p>评论、帖子或标签收到至少 5 个反对，且反对数达到赞同数的 2 倍时自动隐藏，由管理员复核。暂示信息得到 2 个赞同可固定，得到 2 个反对可提前撤销；已固定信息集中被反对时交管理员复核。</p></section>
-    <section><span>04 · 演示中</span><h2>推荐票</h2><p>每人每天获得 1 张基础票，当天未用则失效；额外奖励票可保留，投票时优先使用基础票。同一店铺每人每天最多投 3 张。店铺票数每周一 00:00（北京时间）重新统计，历史记录保留，额外票不随周榜清零。下架店铺暂停投票。</p></section>
+    <section><span>03 · 演示中</span><h2>隐藏与复核</h2><p>评论、帖子或标签收到至少 5 个反对，且反对数达到赞同数的 2 倍时自动隐藏，由管理员复核。暂示信息获得至少 5 个不同用户赞同且赞同多于反对时可固定；获得至少 5 个不同用户反对且反对不少于赞同时提前撤销。已固定信息集中被反对时交管理员复核。</p></section>
+    <section><span>04 · 演示中</span><h2>推荐票与积分</h2><p>每人每天获得 1 张基础票，当天未用则失效；额外奖励票可保留，投票时优先使用基础票。同一店铺每人每天最多投 3 张。店铺票数每周一 00:00（北京时间）重新统计，历史记录保留，额外票不随周榜清零。下架店铺暂停投票。积分暂按每投 1 票累计 1 分，兑换功能尚未开放。</p></section>
     <section><span>05 · 演示中</span><h2>额外推荐票</h2><p>评论获得 5 个不同用户赞同、帖子获得 10 个不同用户赞同，或共建申请被固定收录时，各奖励 1 张；每条内容只奖励一次，不计本人表态。当前只有 3 个演示身份，赞同门槛需在接入更多真实用户后才能自然达到。</p></section>
     <section><span>06 · 当前身份说明</span><h2>演示与正式开放</h2><p>当前的发布人、浏览人、管理员可以随时切换，不代表已验证身份，内容保存在${storageName()}。投票和奖励可用于流程测试；正式开放前需接入学校身份、权限校验与反刷机制。</p></section>
   </div></main>`;
@@ -328,12 +355,34 @@ function adminMaintenance() {
 }
 
 function adminModeration() {
-  const comments = state.data.comments.filter((item) => item.status !== 'archived');
-  const posts = state.data.posts.filter((item) => item.status !== 'archived');
-  const tags = state.data.shops.flatMap((shop) => (shop.tagRecords || []).filter((item) => item.status !== 'archived').map((item) => ({ ...item, shopName: shop.name })));
+  const entries = moderationEntries();
+  const filters = state.moderationFilters;
   const contested = state.data.contributions.filter((item) => item.status === 'contested');
-  const entry = (kind, item, title, detail) => `<div class="moderation-row ${item.status === 'hidden' ? 'is-hidden-content' : ''}"><div><span class="status-pill">${item.status === 'hidden' ? '已隐藏 · 待复核' : '公开中'}</span><b>${escapeHtml(title)}</b><small>${escapeHtml(detail)}</small></div><div class="moderation-actions">${item.status === 'hidden' ? `<button data-action="moderate" data-kind="${kind}" data-id="${escapeHtml(item.id)}" data-decision="restore">恢复</button>` : `<button data-action="moderate" data-kind="${kind}" data-id="${escapeHtml(item.id)}" data-decision="hide">隐藏</button>`}<button data-action="moderate" data-kind="${kind}" data-id="${escapeHtml(item.id)}" data-decision="remove">移除</button></div></div>`;
-  return `<section class="admin-section moderation-section"><div class="admin-section-head"><div><h2>评论、帖子与标签</h2><p>查看已发布内容；隐藏内容可复核恢复，移除后不再公开。</p></div></div><div class="moderation-columns"><div><h3>评论 ${comments.length}</h3>${comments.slice(0, 30).map((item) => entry('comment', item, item.body, `${item.author} · ${dateLabel(item.createdAt)}`)).join('') || '<p class="admin-list-empty">暂无评论。</p>'}</div><div><h3>帖子 ${posts.length}</h3>${posts.slice(0, 30).map((item) => entry('post', item, item.title, `${item.author} · ${dateLabel(item.createdAt)}`)).join('') || '<p class="admin-list-empty">暂无帖子。</p>'}</div><div><h3>店铺标签 ${tags.length}</h3>${tags.slice(0, 30).map((item) => entry('tag', item, item.name, item.shopName)).join('') || '<p class="admin-list-empty">暂无标签。</p>'}</div></div>${contested.length ? `<div class="contested-list"><h3>已固定资料待复核</h3>${contested.map((item) => `<div class="moderation-row"><div><span class="status-pill">有异议</span><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.reviewNote)}</small></div><div class="moderation-actions"><button data-action="resolve-contested" data-id="${item.id}" data-decision="restore">继续收录</button><button data-action="resolve-contested" data-id="${item.id}" data-decision="revoke">撤销收录</button></div></div>`).join('')}</div>` : ''}</section>`;
+  const tab = (kind, label) => `<button type="button" class="moderation-tab ${filters.kind === kind ? 'selected' : ''}" data-action="moderation-kind" data-kind="${kind}" aria-pressed="${filters.kind === kind}">${label}<span>${kind === 'all' ? entries.length : entries.filter((entry) => entry.kind === kind).length}</span></button>`;
+  return `<section class="admin-section moderation-section"><div class="admin-section-head"><div><h2>评论、帖子与标签</h2><p>按内容、状态和时间查找；隐藏内容可恢复，移除后不再公开。</p></div></div>
+    <div class="moderation-toolbar"><div class="moderation-tabs" aria-label="内容类型">${tab('all', '全部')}${tab('comment', '评论')}${tab('post', '帖子')}${tab('tag', '标签')}</div><div class="moderation-controls"><label class="search-box">${icon('search', 17)}<input id="moderation-search" aria-label="搜索内容、作者或位置" placeholder="搜索内容、作者或食堂店铺" value="${escapeHtml(filters.query)}" /></label><label>状态<select id="moderation-status"><option value="all" ${filters.status === 'all' ? 'selected' : ''}>全部状态</option><option value="active" ${filters.status === 'active' ? 'selected' : ''}>公开中</option><option value="hidden" ${filters.status === 'hidden' ? 'selected' : ''}>已隐藏</option></select></label><label>排序<select id="moderation-sort"><option value="newest" ${filters.sort === 'newest' ? 'selected' : ''}>最新发布</option><option value="oldest" ${filters.sort === 'oldest' ? 'selected' : ''}>最早发布</option><option value="opposed" ${filters.sort === 'opposed' ? 'selected' : ''}>反对最多</option></select></label></div></div>
+    <div id="moderation-results" aria-live="polite">${moderationResults(entries)}</div>${contested.length ? `<div class="contested-list"><h3>已固定资料待复核</h3>${contested.map((item) => `<div class="moderation-row"><div><span class="status-pill">有异议</span><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.reviewNote)}</small></div><div class="moderation-actions"><button data-action="resolve-contested" data-id="${item.id}" data-decision="restore">继续收录</button><button data-action="resolve-contested" data-id="${item.id}" data-decision="revoke">撤销收录</button></div></div>`).join('')}</div>` : ''}</section>`;
+}
+
+function moderationEntries() {
+  const location = (shopId) => { const shop = state.data.shops.find((item) => item.id === shopId); const canteen = state.data.canteens.find((item) => item.id === shop?.canteenId); return [canteen?.name, shop?.name].filter(Boolean).join(' › ') || '位置未知'; };
+  const comments = state.data.comments.filter((item) => item.status !== 'archived').map((item) => {
+    const target = item.targetKind === 'dish' ? state.data.shops.flatMap((shop) => shop.dishes || []).find((dish) => dish.id === item.targetId)?.name : item.targetKind === 'post' ? state.data.posts.find((post) => post.id === item.targetId)?.title : '';
+    return { ...item, kind: 'comment', title: item.body, context: `${location(item.shopId)}${target ? ` › ${target}` : ''}`, author: item.author || uploaderName(item.ownerId), createdAt: item.createdAt };
+  });
+  const posts = state.data.posts.filter((item) => item.status !== 'archived').map((item) => ({ ...item, kind: 'post', context: location(item.shopId), author: item.author || uploaderName(item.ownerId) }));
+  const tags = state.data.shops.flatMap((shop) => (shop.tagRecords || []).filter((item) => item.status !== 'archived').map((item) => ({ ...item, kind: 'tag', title: item.name, context: location(shop.id), author: uploaderName(item.ownerId), createdAt: item.createdAt || shop.updatedAt || '' })));
+  return [...comments, ...posts, ...tags].map((item) => ({ ...item, counts: reactionInfo(item.kind, item.id) }));
+}
+
+function moderationResults(entries = moderationEntries()) {
+  const filters = state.moderationFilters;
+  const query = filters.query.trim().toLocaleLowerCase();
+  const visible = entries.filter((item) => (filters.kind === 'all' || item.kind === filters.kind) && (filters.status === 'all' || item.status === filters.status) && (!query || `${item.title} ${item.body || ''} ${item.author} ${item.context}`.toLocaleLowerCase().includes(query)));
+  visible.sort((a, b) => filters.sort === 'opposed' ? b.counts.disagree - a.counts.disagree || Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0) : filters.sort === 'oldest' ? Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0) : Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
+  const labels = { comment: '评论', post: '帖子', tag: '标签' };
+  const rows = visible.slice(0, filters.limit).map((item) => `<article class="moderation-item ${item.status === 'hidden' ? 'is-hidden-content' : ''}"><div class="moderation-item-main"><div class="moderation-item-badges"><span class="moderation-kind">${labels[item.kind]}</span><span class="status-pill">${item.status === 'hidden' ? '已隐藏' : '公开中'}</span></div><h3>${escapeHtml(item.title)}</h3>${item.kind === 'post' && item.body ? `<p>${escapeHtml(item.body.slice(0, 150))}${item.body.length > 150 ? '…' : ''}</p>` : ''}<div class="moderation-meta"><span>${escapeHtml(item.context)}</span><span>${escapeHtml(item.author)}</span><span>${dateLabel(item.createdAt)}</span></div><div class="moderation-reactions">赞同 ${item.counts.agree} · 反对 ${item.counts.disagree}</div></div><div class="moderation-actions">${item.status === 'hidden' ? `<button data-action="moderate" data-kind="${item.kind}" data-id="${escapeHtml(item.id)}" data-decision="restore">恢复</button>` : `<button data-action="moderate" data-kind="${item.kind}" data-id="${escapeHtml(item.id)}" data-decision="hide">隐藏</button>`}<button data-action="moderate" data-kind="${item.kind}" data-id="${escapeHtml(item.id)}" data-decision="remove">移除</button></div></article>`).join('');
+  return `<div class="moderation-count">找到 ${visible.length} 条内容${visible.length > filters.limit ? ` · 已显示 ${filters.limit} 条` : ''}</div><div class="moderation-list">${rows || '<p class="admin-list-empty">没有符合条件的内容。</p>'}</div>${visible.length > filters.limit ? '<button class="button outline small moderation-more" data-action="moderation-more">显示更多</button>' : ''}`;
 }
 
 function adminView() {
@@ -640,6 +689,7 @@ root.addEventListener('click', async (event) => {
   if (command === 'toggle-profile') { state.profileOpen = !state.profileOpen; state.profileTab = 'overview'; render(); return; }
   if (command === 'close-profile') { if (event.target.closest('[data-stop]') && target.classList.contains('profile-backdrop')) return; state.profileOpen = false; render(); return; }
   if (command === 'profile-tab') { state.profileTab = target.dataset.tab; render(); return; }
+  if (command === 'ledger-more') { state.profileLedgerLimit[target.dataset.kind] += 20; render(); return; }
   if (command === 'close-modal') { if (event.target.closest('[data-stop]') && target.classList.contains('modal-backdrop')) return; state.modal = null; render(); return; }
   if (command === 'dismiss-notice') { state.notice = ''; root.querySelector('.toast')?.remove(); return; }
   if (command === 'go-contribute') { go('contribute'); return; }
@@ -647,6 +697,8 @@ root.addEventListener('click', async (event) => {
   if (command === 'open-post') { state.modal = { kind: 'post', selectedShopId: ['shop', 'dish', 'shop-posts'].includes(state.view) ? state.shopId : null }; render(); return; }
   if (command === 'open-shop-posts') { state.shopId = target.dataset.shopId; go('shop-posts'); return; }
   if (command === 'select-admin-canteen') { state.adminCanteenId = target.dataset.id; render(); return; }
+  if (command === 'moderation-kind') { state.moderationFilters.kind = target.dataset.kind; state.moderationFilters.limit = 12; render(); return; }
+  if (command === 'moderation-more') { state.moderationFilters.limit += 12; root.querySelector('#moderation-results').innerHTML = moderationResults(); return; }
   if (command === 'open-tags') { state.modal = { kind: 'tags', shopId: target.dataset.shopId }; render(); return; }
   if (command === 'format-editor') {
     const editor = root.querySelector('#post-editor');
@@ -692,6 +744,7 @@ root.addEventListener('click', async (event) => {
 });
 
 root.addEventListener('input', (event) => {
+  if (event.target.id === 'moderation-search') { state.moderationFilters.query = event.target.value; state.moderationFilters.limit = 12; root.querySelector('#moderation-results').innerHTML = moderationResults(); return; }
   if (event.target.id === 'post-shop-search') { root.querySelector('#post-shop-id').value = ''; state.modal.selectedShopId = null; updateShopOptions(event.target.value); return; }
   if (event.target.id === 'search') {
     state.query = event.target.value;
@@ -704,6 +757,7 @@ root.addEventListener('input', (event) => {
 });
 
 root.addEventListener('change', async (event) => {
+  if (event.target.id === 'moderation-status' || event.target.id === 'moderation-sort') { state.moderationFilters[event.target.id === 'moderation-status' ? 'status' : 'sort'] = event.target.value; state.moderationFilters.limit = 12; root.querySelector('#moderation-results').innerHTML = moderationResults(); return; }
   if (['posts-campus', 'posts-canteen', 'posts-shop', 'posts-sort'].includes(event.target.id)) {
     const filters = state.postFilters;
     if (event.target.id === 'posts-campus') { filters.campusId = event.target.value; filters.canteenId = ''; filters.shopId = ''; }

@@ -36,7 +36,7 @@ function requireAdmin(actorId) {
 }
 
 const MODERATION_OPPOSES = 5;
-const PROVISIONAL_DECISION_VOTES = 2;
+const PROVISIONAL_DECISION_VOTES = 5;
 const REWARD_THRESHOLDS = { comment: 5, post: 10 };
 export function recommendationPeriod(now = new Date()) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now).map((part) => [part.type, part.value]));
@@ -55,15 +55,33 @@ function syncRecommendationRewards(data) {
   data.recommendationRewards ||= [];
   for (const item of data.contributions || []) if (item.status === 'fixed') grantRecommendationReward(data, 'contribution', item);
   for (const kind of ['comment', 'post']) for (const item of data[`${kind}s`] || []) {
-    if (reactionTotals(data, kind, item.id).agree >= REWARD_THRESHOLDS[kind]) grantRecommendationReward(data, kind, item);
+    if (item.status !== 'archived' && item.status !== 'hidden' && reactionTotals(data, kind, item.id, item.ownerId).agree >= REWARD_THRESHOLDS[kind]) grantRecommendationReward(data, kind, item);
   }
+}
+export function recommendationLedger(data, actorId) {
+  const seen = new Set();
+  const rewards = (data.recommendationRewards || []).filter((item) => item.ownerId === actorId).map((item, index) => ({ ...item, key: item.key || `legacy:${index}`, used: false, usedByVoteId: null, inferred: false })).filter((item) => { if (seen.has(item.key)) return false; seen.add(item.key); return true; });
+  const votes = (data.recommendationVotes || []).filter((item) => item.actorId === actorId).map((item) => ({ ...item, appliedRewardKey: null, sourceInferred: false }));
+  const rewardByKey = new Map(rewards.map((item) => [item.key, item]));
+  const used = new Set();
+  for (const vote of votes.filter((item) => item.source === 'bonus' && item.rewardKey)) {
+    const reward = rewardByKey.get(vote.rewardKey);
+    if (reward && !used.has(reward.key)) { used.add(reward.key); reward.used = true; reward.usedByVoteId = vote.id; vote.appliedRewardKey = reward.key; }
+  }
+  let nextUnassigned = 0;
+  for (const vote of votes.filter((item) => item.source === 'bonus' && !item.appliedRewardKey)) {
+    while (nextUnassigned < rewards.length && used.has(rewards[nextUnassigned].key)) nextUnassigned++;
+    const reward = rewards[nextUnassigned];
+    if (reward) { used.add(reward.key); reward.used = true; reward.usedByVoteId = vote.id; reward.inferred = true; vote.appliedRewardKey = reward.key; vote.sourceInferred = true; }
+  }
+  return { rewards, votes, bonusRemaining: rewards.filter((item) => !used.has(item.key)).length, points: votes.length };
 }
 export function recommendationSummary(data, actorId, now = new Date()) {
   const { day, week } = recommendationPeriod(now);
   const votes = data.recommendationVotes || [];
   const mine = votes.filter((vote) => vote.actorId === actorId);
   const baseRemaining = mine.some((vote) => vote.day === day && vote.source === 'base') ? 0 : 1;
-  const bonus = Math.max(0, (data.recommendationRewards || []).filter((reward) => reward.ownerId === actorId).length - mine.filter((vote) => vote.source === 'bonus').length);
+  const bonus = recommendationLedger(data, actorId).bonusRemaining;
   return { day, week, baseRemaining, bonus, available: baseRemaining + bonus, votesToday: mine.filter((vote) => vote.day === day), weeklyVotes: votes.filter((vote) => vote.week === week) };
 }
 function tagId(shopId, name) { return `${shopId}:tag:${encodeURIComponent(name)}`; }
@@ -73,9 +91,13 @@ function syncTagRecords(shop, ownerId = null) {
   for (const name of desired) if (!shop.tagRecords.some((tag) => tag.name === name)) shop.tagRecords.push({ id: tagId(shop.id, name), name, ownerId, status: 'active' });
   shop.tags = shop.tagRecords.filter((tag) => tag.status === 'active').map((tag) => tag.name);
 }
-function reactionTotals(data, targetKind, targetId) {
-  const votes = data.reactions.filter((entry) => entry.targetKind === targetKind && entry.targetId === targetId);
-  return { agree: votes.filter((entry) => entry.stance === 'agree').length, disagree: votes.filter((entry) => entry.stance === 'disagree').length };
+function reactionTotals(data, targetKind, targetId, ownerId = null) {
+  const latestByActor = new Map();
+  for (const entry of data.reactions || []) {
+    if (entry.targetKind === targetKind && entry.targetId === targetId && entry.actorId && entry.actorId !== ownerId) latestByActor.set(entry.actorId, entry.stance);
+  }
+  const votes = [...latestByActor.values()];
+  return { agree: votes.filter((stance) => stance === 'agree').length, disagree: votes.filter((stance) => stance === 'disagree').length };
 }
 
 function read(storage) {
@@ -396,7 +418,7 @@ export class LocalRepository {
       if (existing.stance === stance) data.reactions.splice(data.reactions.indexOf(existing), 1);
       else { existing.stance = stance; existing.updatedAt = new Date().toISOString(); }
     } else data.reactions.push({ targetKind, targetId, actorId: actor.id, stance, updatedAt: new Date().toISOString() });
-    const totals = reactionTotals(data, targetKind, targetId);
+    const totals = reactionTotals(data, targetKind, targetId, item.ownerId);
     if (targetKind === 'contribution' && item.status === 'provisional') {
       if (totals.disagree >= PROVISIONAL_DECISION_VOTES && totals.disagree >= totals.agree) {
         item.status = 'rejected'; item.reviewNote = '社区反对达到暂示撤销门槛'; item.reviewedAt = new Date().toISOString(); item.notificationReadAt = null;
@@ -410,7 +432,7 @@ export class LocalRepository {
       item.status = 'hidden'; item.moderationReason = '反对数达到自动隐藏门槛'; item.moderatedAt = new Date().toISOString();
       if (targetKind === 'tag') { const shop = data.shops.find((entry) => entry.tagRecords?.some((tag) => tag.id === targetId)); if (shop) shop.tags = shop.tagRecords.filter((tag) => tag.status === 'active').map((tag) => tag.name); }
     }
-    if (REWARD_THRESHOLDS[targetKind] && totals.agree >= REWARD_THRESHOLDS[targetKind]) grantRecommendationReward(data, targetKind, item);
+    if (REWARD_THRESHOLDS[targetKind] && item.status === 'active' && totals.agree >= REWARD_THRESHOLDS[targetKind]) grantRecommendationReward(data, targetKind, item);
     write(data, this.storage);
   }
 
@@ -423,7 +445,9 @@ export class LocalRepository {
     if (summary.votesToday.filter((vote) => vote.shopId === shopId).length >= 3) throw new Error('同一家店铺每天最多投 3 张推荐票。');
     if (!summary.available) throw new Error('今天的基础票已使用，暂无额外推荐票。');
     const source = summary.baseRemaining ? 'base' : 'bonus';
-    data.recommendationVotes.push({ id: id(), shopId, actorId, source, day: summary.day, week: summary.week, createdAt: new Date().toISOString() });
+    const rewardKey = source === 'bonus' ? recommendationLedger(data, actorId).rewards.find((reward) => !reward.used)?.key : null;
+    if (source === 'bonus' && !rewardKey) throw new Error('额外推荐票余额异常，请刷新后重试。');
+    data.recommendationVotes.push({ id: id(), shopId, actorId, source, ...(rewardKey ? { rewardKey } : {}), day: summary.day, week: summary.week, createdAt: new Date().toISOString() });
     write(data, this.storage);
     return { source };
   }
