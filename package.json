@@ -1,0 +1,15 @@
+{
+  "name": "campus-canteen-guide-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "dev:remote": "node scripts/serve-remote.mjs",
+    "check": "node --check src/app.js && node --check src/repository.js && node --check src/api-repository.js && node --check src/image-compression.js && node --check src/rich-text.js && node --check src/content-filter.js && node --check scripts/seed-demo.mjs && node --check scripts/migrate-mysql.mjs && node --check scripts/serve-remote.mjs && node --check media.mjs && node --check db.mjs && node --check server.mjs"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.5",
+    "sharp": "^0.35.5"
+  }
+}
