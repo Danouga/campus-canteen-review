@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { connectDatabase } from './db.mjs';
 
@@ -40,6 +40,19 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (pathname === '/api/status' && request.method === 'GET') { json(response, 200, { mode: database ? 'mysql' : 'local', connected: Boolean(database) }); return; }
+  if (/^\/api\/media\/[a-f0-9]{64}$/.test(pathname) && request.method === 'GET') {
+    if (!database) { response.writeHead(404).end('Not Found'); return; }
+    try {
+      const widthText = new URL(request.url, 'http://localhost').searchParams.get('w');
+      const width = widthText === null ? 0 : Number(widthText);
+      if (widthText !== null && ![160, 320, 640].includes(width)) { response.writeHead(400).end('Invalid image width'); return; }
+      const media = await database.media(pathname.slice('/api/media/'.length), width);
+      if (!media) { response.writeHead(404).end('Not Found'); return; }
+      response.writeHead(200, { 'Content-Type': media.mime, 'Content-Length': media.body.length, 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
+      response.end(media.body);
+    } catch { response.writeHead(503).end('Media temporarily unavailable'); }
+    return;
+  }
   if (pathname === '/api/state' && request.method === 'GET') {
     if (!database) { json(response, 404, { error: '未启用数据库。' }); return; }
     try { json(response, 200, { data: await database.snapshot() }); }
@@ -69,8 +82,11 @@ const server = createServer(async (request, response) => {
     return;
   }
   try {
+    const info = await stat(file);
+    const etag = `W/"${info.size.toString(16)}-${Math.trunc(info.mtimeMs).toString(16)}"`;
+    if (request.headers['if-none-match'] === etag) { response.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' }).end(); return; }
     const body = await readFile(file);
-    response.writeHead(200, { 'Content-Type': `${types[extname(file)] || 'application/octet-stream'}; charset=utf-8`, 'Cache-Control': 'no-store' });
+    response.writeHead(200, { 'Content-Type': `${types[extname(file)] || 'application/octet-stream'}; charset=utf-8`, 'Cache-Control': 'no-cache', ETag: etag });
     response.end(body);
   } catch {
     response.writeHead(404).end('Not Found');

@@ -1,5 +1,5 @@
 const allowedTags = new Set(['P', 'DIV', 'H2', 'H3', 'B', 'STRONG', 'I', 'EM', 'U', 'UL', 'OL', 'LI', 'BR', 'IMG']);
-const imagePattern = /^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i;
+const imagePattern = /^(?:data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+|\/api\/media\/[a-f0-9]{64})$/i;
 
 export function sanitizeRichHtml(source) {
   const parsed = new DOMParser().parseFromString(String(source || ''), 'text/html');
@@ -11,7 +11,7 @@ export function sanitizeRichHtml(source) {
     if (node.tagName === 'IMG') {
       const src = node.getAttribute('src') || '';
       if (src.length <= 1_300_000 && imagePattern.test(src)) {
-        const image = document.createElement('img'); image.src = src; image.alt = '帖子图片'; parent.append(image);
+        const image = document.createElement('img'); image.src = src; image.alt = '帖子图片'; image.loading = 'lazy'; image.decoding = 'async'; parent.append(image);
       }
       return;
     }

@@ -11,17 +11,18 @@ npm install
 npm run dev
 ```
 
-当前本机配置位于被 Git 忽略的 `.env.local`，服务地址默认为 `http://127.0.0.1:4174`。`npm run check` 检查 JavaScript 语法，`node tests/contribution-smoke.mjs` 检查共建数据流程，`node tests/recommendation-votes.mjs` 检查推荐票规则。数据库连接失败时服务不会启动，避免误写入浏览器备用数据。
+当前本机配置位于被 Git 忽略的 `.env.local`，服务地址默认为 `http://127.0.0.1:4174`。`npm run check` 检查 JavaScript 语法，`node tests/contribution-smoke.mjs` 检查共建数据流程，`node tests/recommendation-votes.mjs` 检查推荐票规则，`node tests/media-storage.mjs` 在独立临时数据库中检查图片迁移。数据库连接失败时服务不会启动，避免误写入浏览器备用数据。
 
-需要使用已迁移的腾讯云 MySQL 时运行 `npm run dev:remote`，按提示输入远端密码。密码不会写入项目文件；该命令只在当前运行的服务进程中使用远端连接。`npm run dev` 仍使用 `.env.local` 配置的本机 MySQL。端口 4174 一次只能运行一个预览服务；若提示端口占用，请在原服务终端按 Ctrl+C，再启动新服务。若之后需要再次从本机复制数据，可运行 `node scripts/migrate-mysql.mjs <主机> <端口> root canteen_guide_mvp`；脚本先显示两端摘要，目标已有数据时先在远端备份，再要求输入 `MIGRATE` 执行复制。
+需要使用已迁移的腾讯云 MySQL 时运行 `npm run dev:remote`，按提示输入远端密码。密码不会写入项目文件；该命令只在当前运行的服务进程中使用远端连接。`npm run dev` 仍使用 `.env.local` 配置的本机 MySQL。端口 4174 一次只能运行一个预览服务；更新代码后请先在原服务终端按 Ctrl+C，再启动新服务，避免旧版同时写入数据库。首次启动新版会把状态 JSON 内的图片迁到 `app_media` 表，并将原始状态保存在 `app_state_media_backup` 表；这一步可能耗时，之后页面按需加载图片。若之后需要再次从本机复制数据，可运行 `node scripts/migrate-mysql.mjs <主机> <端口> root canteen_guide_mvp`；脚本先显示两端摘要，目标已有数据时先在远端备份，再要求输入 `MIGRATE` 执行复制。
 
 如需补充可识别的演示内容，在服务启动且确认连接本机 MySQL 后运行 `node scripts/seed-demo.mjs`。脚本会在一个已有食堂下添加“【测试】清新小食”、两道测试菜品、三条演示评论和一篇测试帖子；重复运行不会添加同名内容。
 
 ## 当前数据模式
 
-- 已接通本机 MySQL 8.0，并已将本机预览数据迁移到腾讯云 MySQL。服务端自动创建 `canteen_guide_mvp` 数据库与 `app_state` 表，以一行 JSON 保存当前 MVP 的完整预览状态。`src/api-repository.js` 通过本机 HTTP API 调用服务端；浏览器不会读取数据库密码。服务端只监听 `127.0.0.1`，且静态文件路由不会提供 `.env.local`。
+- 已接通本机 MySQL 8.0，并已将本机预览数据迁移到腾讯云 MySQL。服务端以 `app_state` 的一行 JSON 保存文字和业务状态，图片二进制保存在 `app_media`，首次迁移前的原始状态保存在 `app_state_media_backup`。`src/api-repository.js` 通过本机 HTTP API 调用服务端；浏览器不会读取数据库密码。服务端只监听 `127.0.0.1`，且静态文件路由不会提供 `.env.local`。
+- 图片卡片请求 160/320/640px 的 WebP 缩略图，放大时再请求原图；非首屏图片延迟加载。图片 URL 按内容哈希长期缓存，JavaScript/CSS 使用 ETag 协商缓存。服务端用 `sharp` 按需生成缩略图并在进程内缓存；`npm install` 会安装该依赖。
 - MySQL 配置只保存在被 `.gitignore` 忽略的 `.env.local`。未配置 `DB_MODE=mysql` 时自动使用浏览器 `localStorage`；两种模式的数据不会自动迁移。
-- 当前单行 JSON 存储适合本机原型验证，正式多用户版本需要拆分数据表、独立图片存储、事务与审核权限。右上角“用户信息”侧栏可切换“发布人、浏览人、管理员”三种演示身份，查看审核消息和自己的发布；它们不是真实登录，浏览器或 API 可以伪造管理员身份。屏蔽词也只有少量示例词。**不可直接公开部署。**
+- 当前单行 JSON 状态存储适合本机原型验证，正式多用户版本仍需拆分业务数据表、完善事务与审核权限。右上角“用户信息”侧栏可切换“发布人、浏览人、管理员”三种演示身份，查看审核消息和自己的发布；它们不是真实登录，浏览器或 API 可以伪造管理员身份。屏蔽词也只有少量示例词。**不可直接公开部署。**
 - 为避免凭空造学校资料，两校区暂用“校区一/校区二”占位名。管理员可在管理预览页修改。食堂与店铺均从空白开始。
 
 ## 可试用的流程
