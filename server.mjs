@@ -13,7 +13,8 @@ try {
 } catch (error) { if (error.code !== 'ENOENT') throw error; }
 const config = { ...localConfig, ...process.env };
 const port = Number(config.PORT || 4173);
-const database = config.DB_MODE === 'mysql' ? await connectDatabase(config) : null;
+// 默认启用 JSON 文件存储；仅当显式设置 DB_MODE=none 时退回纯静态演示（无持久化）。
+const database = config.DB_MODE === 'none' ? null : await connectDatabase(config);
 
 const server = createAppServer({database, config});
 server.on('error', async (error) => {

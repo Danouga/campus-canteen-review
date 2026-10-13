@@ -130,7 +130,7 @@ node tests/image-descriptions.mjs
 
 尚未实现：学校登录、收藏、已发布评论 / 帖子编辑、举报申诉、可信审计、账号封禁、奖励冲正、独立后台任务、业务分表、增量 API、低参与探索推荐、积分兑换。三维、AI、小程序和赞助只展示未来计划。
 
-原型采用原生 HTML / CSS / JavaScript、Node.js HTTP、mysql2 和 sharp。完整文档见 [文档导航](./docs/README.md)；[规格说明书](./docs/02-产品需求规格说明书.md)包含功能分解、上下文及分层 DFD、权限矩阵、数据字典和验收需求。
+原型采用原生 HTML / CSS / JavaScript、Node.js HTTP，以及 Node 内置 `fs` 的 JSON 文件存储（无需外部数据库，可直接在 WorkBuddy「发布为应用」中托管；也可改为 SQLite）。完整文档见 [文档导航](./docs/README.md)；[规格说明书](./docs/02-产品需求规格说明书.md)包含功能分解、上下文及分层 DFD、权限矩阵、数据字典和验收需求。
 
 ## 邮箱与密码登录（2026-10-13）
 

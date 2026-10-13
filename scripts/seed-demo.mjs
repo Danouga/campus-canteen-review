@@ -20,7 +20,7 @@ async function invoke(method, ...args) {
 }
 
 const status = await request('/api/status');
-if (status.mode !== 'mysql' || !status.connected) throw new Error('请先启动已连接 MySQL 的本地预览。');
+if (!status.connected) throw new Error('请先启动已启用存储（file 或 mysql）的本地预览。');
 
 let data = await snapshot();
 const canteen = data.canteens.find((item) => item.name === '一餐' && item.status === 'active')

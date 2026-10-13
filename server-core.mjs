@@ -49,7 +49,7 @@ return createServer(async (request, response) => {
     } catch (error) { if (error.retryAfter) response.setHeader('Retry-After', error.retryAfter); json(response, error.status || 503, { error: error instanceof AuthError ? error.message : '登录服务暂时不可用。', retryAfter: error.retryAfter || 0 }); }
     return;
   }
-  if (pathname === '/api/status' && request.method === 'GET') { json(response, 200, { mode: database ? 'mysql' : 'local', connected: Boolean(database) }); return; }
+  if (pathname === '/api/status' && request.method === 'GET') { json(response, 200, { mode: database ? 'file' : 'local', connected: Boolean(database) }); return; }
   if (/^\/api\/media\/[a-f0-9]{64}$/.test(pathname) && request.method === 'GET') {
     if (!database) { response.writeHead(404).end('Not Found'); return; }
     try {
