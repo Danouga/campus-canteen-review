@@ -50,6 +50,15 @@ return createServer(async (request, response) => {
     return;
   }
   if (pathname === '/api/status' && request.method === 'GET') { json(response, 200, { mode: database ? 'file' : 'local', connected: Boolean(database) }); return; }
+  if (pathname === '/api/debug' && request.method === 'GET') {
+    const fs = await import('node:fs/promises');
+    const r = resolve(import.meta.dirname);
+    let seed; try { const st = await fs.stat(resolve(r, 'seed-data.json')); seed = { exists: true, size: st.size }; } catch { seed = { exists: false }; }
+    let mediaCount = 0; try { mediaCount = (await fs.readdir(resolve(r, 'seed-media'))).length; } catch {}
+    let snap = null; try { const s = await database.snapshot(); snap = { campuses: (s.campuses || []).length, users: Object.keys(s.publicUserNames || {}).length }; } catch (e) { snap = { error: e.message }; }
+    json(response, 200, { seed, mediaCount, snap, root: r });
+    return;
+  }
   if (/^\/api\/media\/[a-f0-9]{64}$/.test(pathname) && request.method === 'GET') {
     if (!database) { response.writeHead(404).end('Not Found'); return; }
     try {
