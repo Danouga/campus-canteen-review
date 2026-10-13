@@ -22,7 +22,7 @@ const actor = () => state.storageMode === 'mysql' ? state.user : demoUsers.find(
 const unreadCount = () => state.data.contributions.filter((item) => item.ownerId === state.actorId && item.status !== 'pending' && !item.notificationReadAt).length;
 const postPreview = (post) => String(post.body || '').slice(0, 105);
 const postMarkup = (post) => post.contentHtml ? sanitizeRichHtml(post.contentHtml) : `<p>${escapeHtml(post.body || '').replace(/\n/g, '<br>')}</p>${post.photo ? `<img src="${escapeHtml(post.photo)}" alt="帖子图片" loading="lazy" decoding="async" />` : ''}`;
-const storageName = () => state.storageMode === 'mysql' ? 'MySQL 预览库' : '当前浏览器';
+const storageName = () => state.storageMode === 'mysql' ? '服务器数据' : '当前浏览器';
 const uploaderName = (ownerId, fallback) => state.data.publicUserNames?.[ownerId] || demoUsers.find((user) => user.id === ownerId)?.name || fallback || '上传者未记录';
 function reactionInfo(kind, targetId) {
   const ownerId = kind === 'comment' ? state.data.comments.find((item) => item.id === targetId)?.ownerId : kind === 'post' ? state.data.posts.find((item) => item.id === targetId)?.ownerId : kind === 'contribution' ? state.data.contributions.find((item) => item.id === targetId)?.ownerId : state.data.shops.flatMap((shop) => shop.tagRecords || []).find((item) => item.id === targetId)?.ownerId;
@@ -600,6 +600,7 @@ function render() {
 
 async function refresh(initial = false) {
   state.storageMode = await repo.mode();
+  if (state.storageMode !== 'local') state.storageMode = 'mysql'; // 服务端返回任意非 local 模式（mysql/file/sqlite…）都走登录 UI
   if (state.storageMode === 'mysql') { const session = await repo.authSession(); state.user = session.user; if (!state.user && state.authMode === 'change-password') state.authMode = 'login'; state.actorId = session.user?.id || null; }
   state.data = await repo.snapshot();
   if (state.data.contributions.some((item) => item.status === 'provisional' && Date.parse(item.expiresAt) <= Date.now())) {
