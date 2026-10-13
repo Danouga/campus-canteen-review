@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { createAuthStore } from './auth-store.mjs';
 import { LocalRepository, initialState } from './src/repository.js';
 import { extractMedia } from './media.mjs';
@@ -30,11 +31,43 @@ async function resizeImage(body, width) {
   }
 }
 
+// 首次运行或线上持久化卷为空时，从随包发布的种子恢复迁移数据。
+// 背景：托管平台可能忽略 data/ 或复用空持久化卷，导致线上读到空库；种子随代码上传，可保证数据落地。
+async function maybeSeed(store, here) {
+  const data = store.data;
+  const pristineEmpty = (data.users?.length || 0) === 0
+    && Object.keys(data.media || {}).length === 0
+    && (!data.state || (() => {
+      try {
+        const s = JSON.parse(data.state);
+        return (!s.campuses || s.campuses.length === 0) && (!s.canteens || s.canteens.length === 0);
+      } catch { return true; }
+    })());
+  if (!pristineEmpty) return;
+  let seed;
+  try { seed = JSON.parse(await readFile(resolve(here, 'seed-data.json'), 'utf8')); }
+  catch { return; }
+  await store.transaction(async (d, s) => {
+    for (const [hash, mime] of Object.entries(seed.media || {})) {
+      try {
+        const body = await readFile(resolve(here, 'seed-media', hash));
+        await s.writeMediaFile(hash, body);
+        d.media[hash] = mime;
+      } catch { /* 缺失则跳过该媒体 */ }
+    }
+    d.state = seed.state;
+    d.users = seed.users || [];
+    d.revision = seed.revision || 0;
+  });
+  console.log(`已从种子恢复迁移数据：users=${seed.users?.length || 0}, media=${Object.keys(seed.media || {}).length}`);
+}
+
 export async function connectDatabase(config = {}) {
   const here = dirname(fileURLToPath(import.meta.url));
   const dataDir = config.DATA_DIR ? resolve(config.DATA_DIR) : resolve(here, 'data');
   const store = new JsonStore(dataDir);
   await store.load();
+  await maybeSeed(store, here);
   if (store.data.state == null) {
     store.data.state = JSON.stringify(initialState());
     await store.persist();
