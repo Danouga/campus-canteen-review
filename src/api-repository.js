@@ -31,16 +31,16 @@ export class ApiRepository {
   markReviewMessageRead(id, actorId) { return this.invoke('markReviewMessageRead', id, actorId); }
   markAllReviewMessagesRead(actorId) { return this.invoke('markAllReviewMessagesRead', actorId); }
   expireProvisional() { return this.invoke('expireProvisional'); }
-  saveCampus(id, name) { return this.invoke('saveCampus', id, name); }
+  saveCampus(id, name, actorId) { return this.invoke('saveCampus', id, name, actorId); }
   saveCanteen(input) { return this.invoke('saveCanteen', input); }
   saveShop(input) { return this.invoke('saveShop', input); }
-  removeEntry(kind, id) { return this.invoke('removeEntry', kind, id); }
-  restoreEntry(kind, id) { return this.invoke('restoreEntry', kind, id); }
+  removeEntry(kind, id, actorId) { return this.invoke('removeEntry', kind, id, actorId); }
+  restoreEntry(kind, id, actorId) { return this.invoke('restoreEntry', kind, id, actorId); }
   saveDish(input) { return this.invoke('saveDish', input); }
   savePhoto(input) { return this.invoke('savePhoto', input); }
   saveCanteenPhoto(input) { return this.invoke('saveCanteenPhoto', input); }
-  removeCanteenPhoto(canteenId, photoId) { return this.invoke('removeCanteenPhoto', canteenId, photoId); }
-  removeShopContent(kind, shopId, id) { return this.invoke('removeShopContent', kind, shopId, id); }
+  removeCanteenPhoto(canteenId, photoId, actorId) { return this.invoke('removeCanteenPhoto', canteenId, photoId, actorId); }
+  removeShopContent(kind, shopId, id, actorId) { return this.invoke('removeShopContent', kind, shopId, id, actorId); }
   addComment(targetKind, targetId, actorId, body) { return this.invoke('addComment', targetKind, targetId, actorId, body); }
   submitPost(input) { return this.invoke('submitPost', input); }
   setReaction(targetKind, targetId, actorId, stance) { return this.invoke('setReaction', targetKind, targetId, actorId, stance); }
@@ -48,5 +48,5 @@ export class ApiRepository {
   moderateContent(targetKind, targetId, decision, actorId) { return this.invoke('moderateContent', targetKind, targetId, decision, actorId); }
   resolveContested(contributionId, decision, actorId) { return this.invoke('resolveContested', contributionId, decision, actorId); }
   deleteOwnContent(kind, id, actorId) { return this.invoke('deleteOwnContent', kind, id, actorId); }
-  resetPreview() { return this.invoke('resetPreview'); }
+  resetPreview(actorId) { return this.invoke('resetPreview', actorId); }
 }

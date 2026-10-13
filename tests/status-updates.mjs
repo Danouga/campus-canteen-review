@@ -6,10 +6,10 @@ const storage = { getItem: (key) => values.get(key) || null, setItem: (key, valu
 const repo = new LocalRepository(storage);
 const snapshot = () => repo.snapshot();
 
-await repo.saveCanteen({ campusId: 'campus-a', name: '一餐' });
+await repo.saveCanteen({ actorId: 'demo-admin', campusId: 'campus-a', name: '一餐' });
 let data = await snapshot();
 const canteenId = data.canteens[0].id;
-await repo.saveShop({ canteenId, name: '面馆' });
+await repo.saveShop({ actorId: 'demo-admin', canteenId, name: '面馆' });
 data = await snapshot();
 const shopId = data.shops[0].id;
 await repo.saveDish({ shopId, name: '牛肉面', actorId: 'demo-admin' });
@@ -29,7 +29,7 @@ await repo.submitContribution({ ...context, targetKind: 'shop', requestedStatus:
 data = await snapshot();
 await repo.reviewContribution(data.contributions[0].id, 'fixed', '', 'demo-admin');
 assert.equal((await snapshot()).shops[0].availability, 'unlisted');
-await repo.saveShop({ id: shopId, canteenId, name: '面馆（更新）' });
+await repo.saveShop({ actorId: 'demo-admin', id: shopId, canteenId, name: '面馆（更新）' });
 assert.equal((await snapshot()).shops[0].availability, 'unlisted');
 
 await repo.submitContribution({ ...context, targetKind: 'dish', dishId, requestedStatus: 'unlisted' });

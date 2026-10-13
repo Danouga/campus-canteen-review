@@ -8,14 +8,14 @@ const storage = {
   removeItem: (key) => values.delete(key),
 };
 const repo = new LocalRepository(storage);
-await repo.saveCanteen({ campusId: 'campus-a', name: '测试食堂' });
+await repo.saveCanteen({ actorId: 'demo-admin', campusId: 'campus-a', name: '测试食堂' });
 let state = await repo.snapshot();
 const canteenId = state.canteens[0].id;
-await repo.saveShop({ canteenId, name: '测试店铺', tags: '面食、夜宵、面食' });
+await repo.saveShop({ actorId: 'demo-admin', canteenId, name: '测试店铺', tags: '面食、夜宵、面食' });
 state = await repo.snapshot();
 const shopId = state.shops[0].id;
 assert.deepEqual(state.shops[0].tags, ['面食', '夜宵']);
-await repo.saveDish({ shopId, name: '番茄口味' });
+await repo.saveDish({ actorId: 'demo-admin', shopId, name: '番茄口味' });
 state = await repo.snapshot();
 const dishId = state.shops[0].dishes[0].id;
 const base = { campusId: 'campus-a', canteenId, shopId, actorId: 'demo-author' };

@@ -28,7 +28,7 @@ if (!canteen) throw new Error('找不到适合放演示资料的食堂。');
 const shopName = '【测试】清新小食';
 let shop = data.shops.find((item) => item.name === shopName && item.status === 'active');
 if (!shop) {
-  await invoke('saveShop', { canteenId: canteen.id, name: shopName, location: '演示位置（非真实店铺）', tags: '测试、轻食' });
+  await invoke('saveShop', { actorId: 'demo-admin', canteenId: canteen.id, name: shopName, location: '演示位置（非真实店铺）', tags: '测试、轻食' });
   data = await snapshot();
   shop = data.shops.find((item) => item.name === shopName && item.status === 'active');
 }
@@ -38,7 +38,7 @@ for (const dish of [
   { name: '【测试】蔬菜饭', price: '14.00', note: '演示菜品，可继续补充照片与口味。' },
 ]) {
   if (!shop.dishes.some((item) => item.name === dish.name && item.status !== 'archived')) {
-    await invoke('saveDish', { shopId: shop.id, ...dish });
+    await invoke('saveDish', { actorId: 'demo-admin', shopId: shop.id, ...dish });
     data = await snapshot();
     shop = data.shops.find((item) => item.id === shop.id);
   }

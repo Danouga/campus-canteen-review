@@ -11,7 +11,9 @@ export function sanitizeRichHtml(source) {
     if (node.tagName === 'IMG') {
       const src = node.getAttribute('src') || '';
       if (src.length <= 1_300_000 && imagePattern.test(src)) {
-        const image = document.createElement('img'); image.src = src; image.alt = '帖子图片'; image.loading = 'lazy'; image.decoding = 'async'; parent.append(image);
+        const image = document.createElement('img'); image.src = src; image.alt = '帖子图片'; image.loading = 'lazy'; image.decoding = 'async';
+        image.dataset.photoDescription = (node.getAttribute('data-photo-description') || '').trim().slice(0, 200);
+        parent.append(image);
       }
       return;
     }

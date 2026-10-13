@@ -22,8 +22,10 @@ export function normalizeTags(value) {
 export const demoUsers = [
   { id: 'demo-author', name: '发布人', role: 'member' },
   { id: 'demo-viewer', name: '浏览人', role: 'member' },
+  { id: 'demo-reviewer', name: '审核员', role: 'reviewer' },
   { id: 'demo-admin', name: '管理员', role: 'admin' }
 ];
+export const canReview = (actor) => ['admin', 'reviewer'].includes(actor?.role);
 function requireActor(actorId) {
   const actor = demoUsers.find((entry) => entry.id === actorId);
   if (!actor) throw new Error('请选择演示身份。');
@@ -31,7 +33,12 @@ function requireActor(actorId) {
 }
 function requireAdmin(actorId) {
   const actor = requireActor(actorId);
-  if (actor.role !== 'admin') throw new Error('只有管理员可以审核。');
+  if (actor.role !== 'admin') throw new Error('只有管理员可以直接维护资料。');
+  return actor;
+}
+function requireReviewer(actorId) {
+  const actor = requireActor(actorId);
+  if (!canReview(actor)) throw new Error('只有管理员或审核员可以审核。');
   return actor;
 }
 
@@ -134,6 +141,13 @@ function assertPhoto(value, required = false) {
   return photo;
 }
 
+function validatePhotoDescription(value) {
+  const description = String(value || '').trim();
+  if (description.length > 200) throw new Error('图片描述不能超过 200 字。');
+  if (description) { const result = screenComment(description); if (!result.allowed) throw new Error(result.reason); }
+  return description;
+}
+
 export class LocalRepository {
   constructor(storage = globalThis.localStorage) { this.storage = storage; }
   async snapshot() { return clone(read(this.storage)); }
@@ -148,6 +162,7 @@ export class LocalRepository {
     const actor = requireActor(input.actorId);
     const author = actor.name;
     const detail = String(input.detail || '').trim().slice(0, 600);
+    input.photoDescription = validatePhotoDescription(input.photoDescription);
     if (input.photo) input.photo = assertPhoto(input.photo);
     if (!['canteen', 'shop', 'dish', 'hours', 'photo', 'shop-info', 'canteen-photo', 'field-update', 'status-update'].includes(type)) throw new Error('申请类型无效。');
     if (!data.campuses.some((campus) => campus.id === input.campusId)) throw new Error('请选择校区。');
@@ -206,7 +221,7 @@ export class LocalRepository {
   }
 
   async reviewContribution(contributionId, decision, note = '', actorId) {
-    requireAdmin(actorId);
+    requireReviewer(actorId);
     const data = read(this.storage);
     const item = data.contributions.find((entry) => entry.id === contributionId);
     if (!item || item.status !== 'pending') throw new Error('申请不存在或已处理。');
@@ -225,7 +240,7 @@ export class LocalRepository {
   }
 
   async fixProvisional(contributionId, actorId) {
-    requireAdmin(actorId);
+    requireReviewer(actorId);
     const data = read(this.storage);
     const item = data.contributions.find((entry) => entry.id === contributionId);
     if (!item || item.status !== 'provisional') throw new Error('暂示申请不存在。');
@@ -239,12 +254,12 @@ export class LocalRepository {
   }
 
   async revokeProvisional(contributionId, actorId) {
-    requireAdmin(actorId);
+    requireReviewer(actorId);
     const data = read(this.storage);
     const item = data.contributions.find((entry) => entry.id === contributionId);
     if (!item || item.status !== 'provisional') throw new Error('暂示申请不存在。');
     item.status = 'rejected'; item.reviewedAt = new Date().toISOString();
-    item.reviewNote = '管理员提前撤销暂示';
+    item.reviewNote = '审核人员提前撤销暂示';
     item.notificationReadAt = null;
     write(data, this.storage);
   }
@@ -281,7 +296,8 @@ export class LocalRepository {
     return unread.length;
   }
 
-  async saveCampus(campusId, name) {
+  async saveCampus(campusId, name, actorId) {
+    requireAdmin(actorId);
     const data = read(this.storage);
     const campus = data.campuses.find((entry) => entry.id === campusId);
     if (!campus) throw new Error('校区不存在。');
@@ -291,6 +307,7 @@ export class LocalRepository {
   }
 
   async saveCanteen(input) {
+    requireAdmin(input.actorId);
     const data = read(this.storage);
     const name = assertText(input.name, '食堂名称', 60);
     if (!data.campuses.some((entry) => entry.id === input.campusId)) throw new Error('校区不存在。');
@@ -301,6 +318,7 @@ export class LocalRepository {
   }
 
   async saveShop(input) {
+    requireAdmin(input.actorId);
     const data = read(this.storage);
     const name = assertText(input.name, '店铺名称', 60);
     if (!data.canteens.some((entry) => entry.id === input.canteenId && entry.status === 'active')) throw new Error('请选择可用食堂。');
@@ -315,7 +333,8 @@ export class LocalRepository {
     write(data, this.storage);
   }
 
-  async removeEntry(kind, entryId) {
+  async removeEntry(kind, entryId, actorId) {
+    requireAdmin(actorId);
     const data = read(this.storage);
     const collection = kind === 'shop' ? data.shops : kind === 'canteen' ? data.canteens : null;
     const entry = collection?.find((value) => value.id === entryId);
@@ -326,7 +345,8 @@ export class LocalRepository {
     write(data, this.storage);
   }
 
-  async restoreEntry(kind, entryId) {
+  async restoreEntry(kind, entryId, actorId) {
+    requireAdmin(actorId);
     const data = read(this.storage);
     const collection = kind === 'shop' ? data.shops : kind === 'canteen' ? data.canteens : null;
     const entry = collection?.find((value) => value.id === entryId && value.status === 'archived');
@@ -337,18 +357,20 @@ export class LocalRepository {
   }
 
   async saveDish(input) {
+    requireAdmin(input.actorId);
     const data = read(this.storage);
     const shop = data.shops.find((entry) => entry.id === input.shopId && entry.status === 'active');
     if (!shop) throw new Error('店铺不存在。');
     const existing = input.id && shop.dishes.find((entry) => entry.id === input.id);
     const availability = input.availability || existing?.availability || 'available';
     if (!['available', 'unlisted'].includes(availability)) throw new Error('菜品状态无效。');
-    const value = { id: existing?.id || id(), name: assertText(input.name, '菜品名称', 60), price: String(input.price || '').trim().slice(0, 20), note: String(input.note || '').trim().slice(0, 200), photo: input.photo ? assertPhoto(input.photo) : existing?.photo || '', photoOwnerId: input.photo ? requireAdmin(input.actorId).id : existing?.photoOwnerId || null, availability, status: 'active' };
+    const value = { id: existing?.id || id(), name: assertText(input.name, '菜品名称', 60), price: String(input.price || '').trim().slice(0, 20), note: String(input.note || '').trim().slice(0, 200), photo: input.photo ? assertPhoto(input.photo) : existing?.photo || '', photoOwnerId: input.photo ? requireAdmin(input.actorId).id : existing?.photoOwnerId || null, photoDescription: validatePhotoDescription(input.photoDescription ?? (input.photo ? '' : existing?.photoDescription)), availability, status: 'active' };
     if (existing) Object.assign(existing, value); else shop.dishes.push(value);
     shop.updatedAt = new Date().toISOString(); write(data, this.storage);
   }
 
   async savePhoto(input) {
+    requireAdmin(input.actorId);
     const data = read(this.storage);
     const shop = data.shops.find((entry) => entry.id === input.shopId && entry.status === 'active');
     if (!shop) throw new Error('店铺不存在。');
@@ -359,12 +381,13 @@ export class LocalRepository {
     if (photoKind === 'dish' && !dish) throw new Error('请选择菜品。');
     const url = input.photo ? assertPhoto(input.photo) : existing?.url;
     if (!url) throw new Error('请选择图片。');
-    const value = { id: existing?.id || id(), photoKind, dishId: photoKind === 'dish' ? dish.id : null, caption: photoKind === 'dish' ? dish.name : '店铺门面', url, ownerId: input.photo ? requireAdmin(input.actorId).id : existing?.ownerId || null, status: 'active' };
+    const value = { id: existing?.id || id(), photoKind, dishId: photoKind === 'dish' ? dish.id : null, caption: photoKind === 'dish' ? dish.name : '店铺门面', description: validatePhotoDescription(input.photoDescription ?? (input.photo ? '' : existing?.description)), url, ownerId: input.photo ? requireAdmin(input.actorId).id : existing?.ownerId || null, status: 'active' };
     if (existing) Object.assign(existing, value); else shop.photos.push(value);
     shop.updatedAt = new Date().toISOString(); write(data, this.storage);
   }
 
   async saveCanteenPhoto(input) {
+    requireAdmin(input.actorId);
     const data = read(this.storage);
     const canteen = data.canteens.find((entry) => entry.id === input.canteenId && entry.status === 'active');
     if (!canteen) throw new Error('食堂不存在。');
@@ -372,12 +395,13 @@ export class LocalRepository {
     const existing = input.id && canteen.photos.find((entry) => entry.id === input.id);
     const url = input.photo ? assertPhoto(input.photo) : existing?.url;
     if (!url) throw new Error('请选择图片。');
-    const value = { id: existing?.id || id(), url, caption: '食堂照片', ownerId: input.photo ? requireAdmin(input.actorId).id : existing?.ownerId || null, status: 'active' };
+    const value = { id: existing?.id || id(), url, caption: '食堂照片', description: validatePhotoDescription(input.photoDescription ?? (input.photo ? '' : existing?.description)), ownerId: input.photo ? requireAdmin(input.actorId).id : existing?.ownerId || null, status: 'active' };
     if (existing) Object.assign(existing, value); else canteen.photos.push(value);
     canteen.updatedAt = new Date().toISOString(); write(data, this.storage);
   }
 
-  async removeCanteenPhoto(canteenId, photoId) {
+  async removeCanteenPhoto(canteenId, photoId, actorId) {
+    requireAdmin(actorId);
     const data = read(this.storage);
     const canteen = data.canteens.find((entry) => entry.id === canteenId);
     const photo = canteen?.photos?.find((entry) => entry.id === photoId);
@@ -385,7 +409,8 @@ export class LocalRepository {
     photo.status = 'archived'; canteen.updatedAt = new Date().toISOString(); write(data, this.storage);
   }
 
-  async removeShopContent(kind, shopId, entryId) {
+  async removeShopContent(kind, shopId, entryId, actorId) {
+    requireAdmin(actorId);
     const data = read(this.storage);
     const shop = data.shops.find((entry) => entry.id === shopId);
     const collection = kind === 'dish' ? shop?.dishes : kind === 'photo' ? shop?.photos : null;
@@ -465,7 +490,7 @@ export class LocalRepository {
   }
 
   async moderateContent(targetKind, targetId, decision, actorId) {
-    requireAdmin(actorId);
+    requireReviewer(actorId);
     if (!['hide', 'restore', 'remove'].includes(decision)) throw new Error('处理方式无效。');
     const data = read(this.storage);
     const collection = targetKind === 'comment' ? data.comments : targetKind === 'post' ? data.posts : targetKind === 'tag' ? data.shops.flatMap((shop) => shop.tagRecords || []) : null;
@@ -473,7 +498,7 @@ export class LocalRepository {
     if (!item || item.status === 'archived') throw new Error('内容不存在。');
     item.status = decision === 'remove' ? 'archived' : decision === 'hide' ? 'hidden' : 'active';
     item.moderationLocked = decision === 'restore';
-    item.moderationReason = decision === 'restore' ? '管理员复核后恢复' : decision === 'hide' ? '管理员隐藏' : '管理员移除';
+    item.moderationReason = decision === 'restore' ? '审核人员复核后恢复' : decision === 'hide' ? '审核人员隐藏' : '审核人员移除';
     item.moderatedAt = new Date().toISOString();
     if (targetKind === 'tag') {
       const shop = data.shops.find((entry) => entry.tagRecords?.some((tag) => tag.id === targetId));
@@ -483,7 +508,7 @@ export class LocalRepository {
   }
 
   async resolveContested(contributionId, decision, actorId) {
-    requireAdmin(actorId);
+    requireReviewer(actorId);
     if (!['restore', 'revoke'].includes(decision)) throw new Error('处理方式无效。');
     const data = read(this.storage);
     const item = data.contributions.find((entry) => entry.id === contributionId && entry.status === 'contested');
@@ -512,7 +537,7 @@ export class LocalRepository {
     write(data, this.storage);
   }
 
-  async resetPreview() { this.storage.removeItem(KEY); }
+  async resetPreview(actorId) { requireAdmin(actorId); this.storage.removeItem(KEY); }
 }
 
 function applyContribution(data, item) {
@@ -536,7 +561,7 @@ function applyContribution(data, item) {
     const canteen = data.canteens.find((entry) => entry.id === item.canteenId && entry.status === 'active');
     if (!canteen) throw new Error('对应食堂不存在。');
     canteen.photos ||= [];
-    const createdId = id(); canteen.photos.push({ id: createdId, url: item.photo, caption: '食堂照片', ownerId: item.ownerId || null, status: 'active' }); item.applied = { kind: 'canteen-photo', id: createdId, canteenId: canteen.id };
+    const createdId = id(); canteen.photos.push({ id: createdId, url: item.photo, caption: '食堂照片', description: item.photoDescription || '', author: item.author, ownerId: item.ownerId || null, status: 'active' }); item.applied = { kind: 'canteen-photo', id: createdId, canteenId: canteen.id };
     canteen.updatedAt = now;
     return;
   }
@@ -577,14 +602,14 @@ function applyContribution(data, item) {
     const dishId = id();
     shop.dishes.push({ id: dishId, name: item.title, price: item.price || '', note: item.detail, photo: '', status: 'active' });
     const photoId = item.photo ? id() : null;
-    if (item.photo) shop.photos.push({ id: photoId, photoKind: 'dish', dishId, url: item.photo, caption: item.title, ownerId: item.ownerId || null, status: 'active' });
+    if (item.photo) shop.photos.push({ id: photoId, photoKind: 'dish', dishId, url: item.photo, caption: item.title, description: item.photoDescription || '', author: item.author, ownerId: item.ownerId || null, status: 'active' });
     item.applied = { kind: 'dish', id: dishId, photoId, shopId: shop.id };
   }
   if (item.type === 'photo') {
     const photoKind = item.photoKind || 'dish';
     const dish = shop.dishes.find((entry) => entry.id === item.dishId && entry.status !== 'archived');
     if (photoKind === 'dish' && !dish) throw new Error('对应菜品不存在。');
-    const createdId = id(); shop.photos.push({ id: createdId, photoKind, dishId: photoKind === 'dish' ? dish.id : null, url: item.photo || '', caption: photoKind === 'dish' ? dish.name : '店铺门面', ownerId: item.ownerId || null, status: 'active' }); item.applied = { kind: 'photo', id: createdId, shopId: shop.id };
+    const createdId = id(); shop.photos.push({ id: createdId, photoKind, dishId: photoKind === 'dish' ? dish.id : null, url: item.photo || '', caption: photoKind === 'dish' ? dish.name : '店铺门面', description: item.photoDescription || '', author: item.author, ownerId: item.ownerId || null, status: 'active' }); item.applied = { kind: 'photo', id: createdId, shopId: shop.id };
   }
   if (item.type === 'shop-info') {
     const field = item.field === 'lateHours' ? 'lateHours' : item.field === 'category' ? 'tags' : 'location'; item.applied = { kind: 'shop-info', field, shopId: shop.id, previous: shop[field], next: field === 'tags' ? normalizeTags(item.detail) : item.detail };

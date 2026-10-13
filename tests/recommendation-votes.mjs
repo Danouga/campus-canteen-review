@@ -18,11 +18,11 @@ assert.equal(newWeek.baseRemaining, 1);
 assert.equal(recommendationLedger(pastWeek, 'demo-author').points, 1);
 assert.equal(recommendationLedger(pastWeek, 'demo-author').votes[0].sourceInferred, true);
 
-await repo.saveCanteen({ campusId: 'campus-a', name: '测试食堂' });
+await repo.saveCanteen({ actorId: 'demo-admin', campusId: 'campus-a', name: '测试食堂' });
 let data = await snapshot();
 const canteenId = data.canteens[0].id;
-await repo.saveShop({ canteenId, name: '第一家店' });
-await repo.saveShop({ canteenId, name: '第二家店' });
+await repo.saveShop({ actorId: 'demo-admin', canteenId, name: '第一家店' });
+await repo.saveShop({ actorId: 'demo-admin', canteenId, name: '第二家店' });
 data = await snapshot();
 const [secondShop, firstShop] = data.shops;
 
@@ -96,8 +96,8 @@ assert.equal((await snapshot()).recommendationRewards.filter((entry) => entry.ke
 
 const parallelValues = new Map();
 const parallelRepo = new LocalRepository({ getItem: (key) => parallelValues.get(key) || null, setItem: (key, value) => parallelValues.set(key, value), removeItem: (key) => parallelValues.delete(key) });
-await parallelRepo.saveCanteen({ campusId: 'campus-a', name: '并发测试食堂' });
-await parallelRepo.saveShop({ canteenId: (await parallelRepo.snapshot()).canteens[0].id, name: '并发测试店铺' });
+await parallelRepo.saveCanteen({ actorId: 'demo-admin', campusId: 'campus-a', name: '并发测试食堂' });
+await parallelRepo.saveShop({ actorId: 'demo-admin', canteenId: (await parallelRepo.snapshot()).canteens[0].id, name: '并发测试店铺' });
 const parallelShopId = (await parallelRepo.snapshot()).shops[0].id;
 const attempts = await Promise.allSettled(Array.from({ length: 5 }, () => parallelRepo.castRecommendationVote(parallelShopId, 'demo-viewer')));
 assert.equal(attempts.filter((entry) => entry.status === 'fulfilled').length, 1);

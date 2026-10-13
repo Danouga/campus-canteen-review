@@ -13,10 +13,10 @@ const seedVotes = (kind, targetId, count, stance) => {
   values.set(KEY, JSON.stringify(state));
 };
 
-await repo.saveCanteen({ campusId: 'campus-a', name: '一餐' });
+await repo.saveCanteen({ actorId: 'demo-admin', campusId: 'campus-a', name: '一餐' });
 let state = await snapshot();
 const canteenId = state.canteens[0].id;
-await repo.saveShop({ canteenId, name: '面馆', tags: '面食、夜宵' });
+await repo.saveShop({ actorId: 'demo-admin', canteenId, name: '面馆', tags: '面食、夜宵' });
 state = await snapshot();
 const shopId = state.shops[0].id;
 const tagId = state.shops[0].tagRecords[0].id;
