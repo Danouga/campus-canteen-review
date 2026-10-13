@@ -23,6 +23,6 @@ server.on('error', async (error) => {
   process.exitCode = 1;
   await database?.close();
 });
-server.listen(port, '127.0.0.1', () => {
-  console.log(`MVP preview: http://127.0.0.1:${port}`);
+server.listen(port, '0.0.0.0', () => {
+  console.log(`MVP preview: http://0.0.0.0:${port}`);
 });
