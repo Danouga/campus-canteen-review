@@ -401,7 +401,7 @@ function adminView() {
   ${provisional.length ? `<section class="admin-section"><div class="admin-section-head"><div><h2>暂示中的资料</h2><p>到期会自动停止展示；管理员或审核员可提前固定或撤销。</p></div></div>${provisional.map((item) => `<div class="manage-row"><span class="status-pill">暂示中</span><span><b>${escapeHtml(item.title)}</b><small>至 ${dateLabel(item.expiresAt)}</small></span><button class="mini-add" data-action="revoke-provisional" data-id="${item.id}">撤销</button><button class="mini-add" data-action="fix-provisional" data-id="${item.id}">固定收录</button></div>`).join('')}</section>` : ''}
   ${actor()?.role === 'admin' ? adminMaintenance() : ''}${adminModeration()}
   ${actor()?.role === 'admin' && archived.length ? `<section class="admin-section"><div class="admin-section-head"><div><h2>已下架资料</h2><p>可恢复误操作下架的食堂或店铺。</p></div></div>${archived.map((item) => `<div class="manage-row"><span class="status-pill">已下架</span><span><b>${escapeHtml(item.name)}</b><small>${item.kind === 'canteen' ? '食堂' : '店铺'}</small></span><button class="mini-add" data-action="restore-entry" data-kind="${item.kind}" data-id="${item.id}">恢复</button></div>`).join('')}</section>` : ''}
-  ${actor()?.role === 'admin' ? `<div class="admin-bottom"><span>预览数据存于${storageName()}；清空操作不可恢复。</span><button class="quiet-button" data-action="reset-preview">清空本地预览数据</button></div>` : ''}</main>`;
+  ${actor()?.role === 'admin' ? `<div class="admin-bottom"><span>数据备份：导出的压缩包含全部内容、账号与图片，请妥善保存。</span><a class="quiet-button" href="/api/export" download>导出全部数据</a><button class="quiet-button" data-action="reset-preview">清空预览数据</button></div>` : ''}</main>`;
 }
 
 function reviewDetails(item) {

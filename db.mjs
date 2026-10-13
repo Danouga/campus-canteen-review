@@ -86,6 +86,28 @@ export async function connectDatabase(config = {}) {
         return snapshotData;
       });
     },
+    // 导出完整备份：整库状态 + 全部媒体二进制，供管理员下载留存。
+    async exportAll() {
+      return store.read(async (data) => {
+        const snapshot = JSON.parse(JSON.stringify({
+          state: data.state,
+          revision: data.revision || 0,
+          media: data.media || {},
+          users: data.users || [],
+          codes: data.codes || [],
+          sessions: data.sessions || [],
+          rateLimits: data.rateLimits || []
+        }));
+        const mediaFiles = [];
+        for (const [hash, mime] of Object.entries(data.media || {})) {
+          try {
+            const body = await store.readMediaFile(hash);
+            if (body) mediaFiles.push({ hash, mime, body });
+          } catch { /* 缺失则跳过该媒体 */ }
+        }
+        return { snapshot, mediaFiles };
+      });
+    },
     async media(hash, width = 0) {
       if (!/^[a-f0-9]{64}$/.test(hash)) return null;
       if (width && ![160, 320, 640].includes(width)) throw new Error('图片尺寸无效。');

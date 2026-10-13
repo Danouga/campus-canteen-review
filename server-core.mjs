@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { createAuthService, AuthError } from './auth.mjs';
 import { bindActor, visibleState } from './access.mjs';
+import { buildZip } from './zip.mjs';
 const root = resolve(import.meta.dirname);
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml' };
 function json(response, status, value) {
@@ -83,6 +84,29 @@ return createServer(async (request, response) => {
     if (!database) { json(response, 404, { error: '未启用数据库。' }); return; }
     try { json(response, 200, { data: visibleState(await database.snapshot(), await auth.user(request)) }); }
     catch { json(response, 503, { error: '数据库暂时不可用。' }); }
+    return;
+  }
+  if (pathname === '/api/export' && request.method === 'GET') {
+    if (!database) { json(response, 404, { error: '当前为本地演示模式，无服务器端数据。' }); return; }
+    try {
+      const user = await auth.user(request);
+      if (!user || user.role !== 'admin') { json(response, 403, { error: '只有管理员可以导出数据。' }); return; }
+      const { snapshot, mediaFiles } = await database.exportAll();
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      const entries = [{ name: 'app-data.json', body: Buffer.from(JSON.stringify(snapshot, null, 2), 'utf8') }];
+      for (const file of mediaFiles) entries.push({ name: `media/${file.hash}`, body: file.body });
+      const zip = buildZip(entries);
+      const filename = `canteen-export-${stamp}.zip`;
+      response.writeHead(200, {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        'Content-Length': zip.length,
+        'Cache-Control': 'no-store'
+      });
+      response.end(zip);
+    } catch {
+      json(response, 500, { error: '导出失败，请稍后重试。' });
+    }
     return;
   }
   if (pathname === '/api/action' && request.method === 'POST') {
