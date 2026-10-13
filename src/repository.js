@@ -26,18 +26,19 @@ export const demoUsers = [
   { id: 'demo-admin', name: '管理员', role: 'admin' }
 ];
 export const canReview = (actor) => ['admin', 'reviewer'].includes(actor?.role);
-function requireActor(actorId) {
+function requireActor(actorId, trustedActor = null) {
+  if (trustedActor) { if (trustedActor.id !== actorId) throw new Error("登录身份不匹配。"); return trustedActor; }
   const actor = demoUsers.find((entry) => entry.id === actorId);
   if (!actor) throw new Error('请选择演示身份。');
   return actor;
 }
-function requireAdmin(actorId) {
-  const actor = requireActor(actorId);
+function requireAdmin(actorId, trustedActor = null) {
+  const actor = requireActor(actorId, trustedActor);
   if (actor.role !== 'admin') throw new Error('只有管理员可以直接维护资料。');
   return actor;
 }
-function requireReviewer(actorId) {
-  const actor = requireActor(actorId);
+function requireReviewer(actorId, trustedActor = null) {
+  const actor = requireActor(actorId, trustedActor);
   if (!canReview(actor)) throw new Error('只有管理员或审核员可以审核。');
   return actor;
 }
@@ -53,7 +54,7 @@ export function recommendationPeriod(now = new Date()) {
   return { day, week: monday.toISOString().slice(0, 10) };
 }
 function grantRecommendationReward(data, kind, item) {
-  if (!item?.ownerId || !demoUsers.some((user) => user.id === item.ownerId)) return;
+  if (!item?.ownerId) return;
   const key = `${kind}:${item.id}`;
   if (!data.recommendationRewards.some((reward) => reward.key === key)) data.recommendationRewards.push({ key, ownerId: item.ownerId, sourceKind: kind, sourceId: item.id, createdAt: new Date().toISOString() });
 }
@@ -149,7 +150,7 @@ function validatePhotoDescription(value) {
 }
 
 export class LocalRepository {
-  constructor(storage = globalThis.localStorage) { this.storage = storage; }
+  constructor(storage = globalThis.localStorage, trustedActor = null) { this.storage = storage; this.trustedActor = trustedActor; }
   async snapshot() { return clone(read(this.storage)); }
 
   async submitContribution(input) {
@@ -159,7 +160,7 @@ export class LocalRepository {
       : type === 'photo'
       ? input.photoKind === 'storefront' ? '店铺门面' : data.shops.find((entry) => entry.id === input.shopId)?.dishes.find((dish) => dish.id === input.dishId)?.name || ''
       : type === 'canteen-photo' ? '食堂照片' : type === 'field-update' ? '资料修改' : assertText(input.title, '名称');
-    const actor = requireActor(input.actorId);
+    const actor = requireActor(input.actorId, this.trustedActor);
     const author = actor.name;
     const detail = String(input.detail || '').trim().slice(0, 600);
     input.photoDescription = validatePhotoDescription(input.photoDescription);
@@ -221,7 +222,7 @@ export class LocalRepository {
   }
 
   async reviewContribution(contributionId, decision, note = '', actorId) {
-    requireReviewer(actorId);
+    requireReviewer(actorId, this.trustedActor);
     const data = read(this.storage);
     const item = data.contributions.find((entry) => entry.id === contributionId);
     if (!item || item.status !== 'pending') throw new Error('申请不存在或已处理。');
@@ -240,7 +241,7 @@ export class LocalRepository {
   }
 
   async fixProvisional(contributionId, actorId) {
-    requireReviewer(actorId);
+    requireReviewer(actorId, this.trustedActor);
     const data = read(this.storage);
     const item = data.contributions.find((entry) => entry.id === contributionId);
     if (!item || item.status !== 'provisional') throw new Error('暂示申请不存在。');
@@ -254,7 +255,7 @@ export class LocalRepository {
   }
 
   async revokeProvisional(contributionId, actorId) {
-    requireReviewer(actorId);
+    requireReviewer(actorId, this.trustedActor);
     const data = read(this.storage);
     const item = data.contributions.find((entry) => entry.id === contributionId);
     if (!item || item.status !== 'provisional') throw new Error('暂示申请不存在。');
@@ -285,7 +286,7 @@ export class LocalRepository {
   }
 
   async markAllReviewMessagesRead(actorId) {
-    requireActor(actorId);
+    requireActor(actorId, this.trustedActor);
     const data = read(this.storage);
     const unread = data.contributions.filter((entry) => entry.ownerId === actorId && entry.status !== 'pending' && !entry.notificationReadAt);
     if (unread.length) {
@@ -297,7 +298,7 @@ export class LocalRepository {
   }
 
   async saveCampus(campusId, name, actorId) {
-    requireAdmin(actorId);
+    requireAdmin(actorId, this.trustedActor);
     const data = read(this.storage);
     const campus = data.campuses.find((entry) => entry.id === campusId);
     if (!campus) throw new Error('校区不存在。');
@@ -307,7 +308,7 @@ export class LocalRepository {
   }
 
   async saveCanteen(input) {
-    requireAdmin(input.actorId);
+    requireAdmin(input.actorId, this.trustedActor);
     const data = read(this.storage);
     const name = assertText(input.name, '食堂名称', 60);
     if (!data.campuses.some((entry) => entry.id === input.campusId)) throw new Error('校区不存在。');
@@ -318,7 +319,7 @@ export class LocalRepository {
   }
 
   async saveShop(input) {
-    requireAdmin(input.actorId);
+    requireAdmin(input.actorId, this.trustedActor);
     const data = read(this.storage);
     const name = assertText(input.name, '店铺名称', 60);
     if (!data.canteens.some((entry) => entry.id === input.canteenId && entry.status === 'active')) throw new Error('请选择可用食堂。');
@@ -327,14 +328,14 @@ export class LocalRepository {
     if (!['open', 'temporarily_closed', 'unlisted'].includes(availability)) throw new Error('店铺状态无效。');
     const value = { id: existing?.id || id(), canteenId: input.canteenId, name, tags: normalizeTags(input.tags ?? input.category ?? existing?.tags ?? existing?.category), tagRecords: existing?.tagRecords || [], location: String(input.location || '').trim().slice(0, 120), lateHours: String(input.lateHours || '').trim().slice(0, 120), dishes: existing?.dishes || [], photos: existing?.photos || [], availability, status: 'active', updatedAt: new Date().toISOString() };
     for (const tag of value.tagRecords) if (!value.tags.includes(tag.name) && tag.status === 'active') tag.status = 'archived';
-    for (const tagName of value.tags) { const tag = value.tagRecords.find((entry) => entry.name === tagName); if (tag) tag.status = 'active'; else value.tagRecords.push({ id: tagId(value.id, tagName), name: tagName, ownerId: 'demo-admin', status: 'active' }); }
+    for (const tagName of value.tags) { const tag = value.tagRecords.find((entry) => entry.name === tagName); if (tag) tag.status = 'active'; else value.tagRecords.push({ id: tagId(value.id, tagName), name: tagName, ownerId: input.actorId, status: 'active' }); }
     syncTagRecords(value);
     if (existing) Object.assign(existing, value); else data.shops.push(value);
     write(data, this.storage);
   }
 
   async removeEntry(kind, entryId, actorId) {
-    requireAdmin(actorId);
+    requireAdmin(actorId, this.trustedActor);
     const data = read(this.storage);
     const collection = kind === 'shop' ? data.shops : kind === 'canteen' ? data.canteens : null;
     const entry = collection?.find((value) => value.id === entryId);
@@ -346,7 +347,7 @@ export class LocalRepository {
   }
 
   async restoreEntry(kind, entryId, actorId) {
-    requireAdmin(actorId);
+    requireAdmin(actorId, this.trustedActor);
     const data = read(this.storage);
     const collection = kind === 'shop' ? data.shops : kind === 'canteen' ? data.canteens : null;
     const entry = collection?.find((value) => value.id === entryId && value.status === 'archived');
@@ -357,20 +358,20 @@ export class LocalRepository {
   }
 
   async saveDish(input) {
-    requireAdmin(input.actorId);
+    requireAdmin(input.actorId, this.trustedActor);
     const data = read(this.storage);
     const shop = data.shops.find((entry) => entry.id === input.shopId && entry.status === 'active');
     if (!shop) throw new Error('店铺不存在。');
     const existing = input.id && shop.dishes.find((entry) => entry.id === input.id);
     const availability = input.availability || existing?.availability || 'available';
     if (!['available', 'unlisted'].includes(availability)) throw new Error('菜品状态无效。');
-    const value = { id: existing?.id || id(), name: assertText(input.name, '菜品名称', 60), price: String(input.price || '').trim().slice(0, 20), note: String(input.note || '').trim().slice(0, 200), photo: input.photo ? assertPhoto(input.photo) : existing?.photo || '', photoOwnerId: input.photo ? requireAdmin(input.actorId).id : existing?.photoOwnerId || null, photoDescription: validatePhotoDescription(input.photoDescription ?? (input.photo ? '' : existing?.photoDescription)), availability, status: 'active' };
+    const value = { id: existing?.id || id(), name: assertText(input.name, '菜品名称', 60), price: String(input.price || '').trim().slice(0, 20), note: String(input.note || '').trim().slice(0, 200), photo: input.photo ? assertPhoto(input.photo) : existing?.photo || '', photoOwnerId: input.photo ? requireAdmin(input.actorId, this.trustedActor).id : existing?.photoOwnerId || null, photoDescription: validatePhotoDescription(input.photoDescription ?? (input.photo ? '' : existing?.photoDescription)), availability, status: 'active' };
     if (existing) Object.assign(existing, value); else shop.dishes.push(value);
     shop.updatedAt = new Date().toISOString(); write(data, this.storage);
   }
 
   async savePhoto(input) {
-    requireAdmin(input.actorId);
+    requireAdmin(input.actorId, this.trustedActor);
     const data = read(this.storage);
     const shop = data.shops.find((entry) => entry.id === input.shopId && entry.status === 'active');
     if (!shop) throw new Error('店铺不存在。');
@@ -381,13 +382,13 @@ export class LocalRepository {
     if (photoKind === 'dish' && !dish) throw new Error('请选择菜品。');
     const url = input.photo ? assertPhoto(input.photo) : existing?.url;
     if (!url) throw new Error('请选择图片。');
-    const value = { id: existing?.id || id(), photoKind, dishId: photoKind === 'dish' ? dish.id : null, caption: photoKind === 'dish' ? dish.name : '店铺门面', description: validatePhotoDescription(input.photoDescription ?? (input.photo ? '' : existing?.description)), url, ownerId: input.photo ? requireAdmin(input.actorId).id : existing?.ownerId || null, status: 'active' };
+    const value = { id: existing?.id || id(), photoKind, dishId: photoKind === 'dish' ? dish.id : null, caption: photoKind === 'dish' ? dish.name : '店铺门面', description: validatePhotoDescription(input.photoDescription ?? (input.photo ? '' : existing?.description)), url, ownerId: input.photo ? requireAdmin(input.actorId, this.trustedActor).id : existing?.ownerId || null, status: 'active' };
     if (existing) Object.assign(existing, value); else shop.photos.push(value);
     shop.updatedAt = new Date().toISOString(); write(data, this.storage);
   }
 
   async saveCanteenPhoto(input) {
-    requireAdmin(input.actorId);
+    requireAdmin(input.actorId, this.trustedActor);
     const data = read(this.storage);
     const canteen = data.canteens.find((entry) => entry.id === input.canteenId && entry.status === 'active');
     if (!canteen) throw new Error('食堂不存在。');
@@ -395,13 +396,13 @@ export class LocalRepository {
     const existing = input.id && canteen.photos.find((entry) => entry.id === input.id);
     const url = input.photo ? assertPhoto(input.photo) : existing?.url;
     if (!url) throw new Error('请选择图片。');
-    const value = { id: existing?.id || id(), url, caption: '食堂照片', description: validatePhotoDescription(input.photoDescription ?? (input.photo ? '' : existing?.description)), ownerId: input.photo ? requireAdmin(input.actorId).id : existing?.ownerId || null, status: 'active' };
+    const value = { id: existing?.id || id(), url, caption: '食堂照片', description: validatePhotoDescription(input.photoDescription ?? (input.photo ? '' : existing?.description)), ownerId: input.photo ? requireAdmin(input.actorId, this.trustedActor).id : existing?.ownerId || null, status: 'active' };
     if (existing) Object.assign(existing, value); else canteen.photos.push(value);
     canteen.updatedAt = new Date().toISOString(); write(data, this.storage);
   }
 
   async removeCanteenPhoto(canteenId, photoId, actorId) {
-    requireAdmin(actorId);
+    requireAdmin(actorId, this.trustedActor);
     const data = read(this.storage);
     const canteen = data.canteens.find((entry) => entry.id === canteenId);
     const photo = canteen?.photos?.find((entry) => entry.id === photoId);
@@ -410,7 +411,7 @@ export class LocalRepository {
   }
 
   async removeShopContent(kind, shopId, entryId, actorId) {
-    requireAdmin(actorId);
+    requireAdmin(actorId, this.trustedActor);
     const data = read(this.storage);
     const shop = data.shops.find((entry) => entry.id === shopId);
     const collection = kind === 'dish' ? shop?.dishes : kind === 'photo' ? shop?.photos : null;
@@ -421,7 +422,7 @@ export class LocalRepository {
 
   async addComment(targetKind, targetId, actorId, body) {
     const data = read(this.storage);
-    const actor = requireActor(actorId);
+    const actor = requireActor(actorId, this.trustedActor);
     const shop = targetKind === 'shop' ? data.shops.find((entry) => entry.id === targetId && entry.status === 'active')
       : targetKind === 'dish' ? data.shops.find((entry) => entry.status === 'active' && entry.dishes.some((dish) => dish.id === targetId && dish.status !== 'archived'))
       : targetKind === 'post' ? data.shops.find((entry) => entry.status === 'active' && data.posts.some((post) => post.id === targetId && post.shopId === entry.id && post.status !== 'archived')) : null;
@@ -434,7 +435,7 @@ export class LocalRepository {
 
   async submitPost(input) {
     const data = read(this.storage);
-    const actor = requireActor(input.actorId);
+    const actor = requireActor(input.actorId, this.trustedActor);
     if (!data.shops.some((shop) => shop.id === input.shopId && shop.status === 'active')) throw new Error('请选择已收录的店铺。');
     const screening = screenComment(`${input.title} ${input.body}`);
     if (!screening.allowed) throw new Error(screening.reason);
@@ -443,7 +444,7 @@ export class LocalRepository {
   }
 
   async setReaction(targetKind, targetId, actorId, stance) {
-    const actor = requireActor(actorId);
+    const actor = requireActor(actorId, this.trustedActor);
     if (!['agree', 'disagree'].includes(stance)) throw new Error('请选择赞同或反对。');
     const data = read(this.storage);
     const collection = targetKind === 'comment' ? data.comments : targetKind === 'post' ? data.posts : targetKind === 'contribution' ? data.contributions : targetKind === 'tag' ? data.shops.flatMap((shop) => shop.tagRecords || []) : null;
@@ -474,7 +475,7 @@ export class LocalRepository {
   }
 
   async castRecommendationVote(shopId, actorId) {
-    requireActor(actorId);
+    requireActor(actorId, this.trustedActor);
     const data = read(this.storage);
     const shop = data.shops.find((entry) => entry.id === shopId && entry.status === 'active');
     if (!shop || shop.availability === 'unlisted') throw new Error('该店铺暂时不能接收推荐票。');
@@ -490,7 +491,7 @@ export class LocalRepository {
   }
 
   async moderateContent(targetKind, targetId, decision, actorId) {
-    requireReviewer(actorId);
+    requireReviewer(actorId, this.trustedActor);
     if (!['hide', 'restore', 'remove'].includes(decision)) throw new Error('处理方式无效。');
     const data = read(this.storage);
     const collection = targetKind === 'comment' ? data.comments : targetKind === 'post' ? data.posts : targetKind === 'tag' ? data.shops.flatMap((shop) => shop.tagRecords || []) : null;
@@ -508,7 +509,7 @@ export class LocalRepository {
   }
 
   async resolveContested(contributionId, decision, actorId) {
-    requireReviewer(actorId);
+    requireReviewer(actorId, this.trustedActor);
     if (!['restore', 'revoke'].includes(decision)) throw new Error('处理方式无效。');
     const data = read(this.storage);
     const item = data.contributions.find((entry) => entry.id === contributionId && entry.status === 'contested');
@@ -521,7 +522,7 @@ export class LocalRepository {
   }
 
   async deleteOwnContent(kind, entryId, actorId) {
-    requireActor(actorId);
+    requireActor(actorId, this.trustedActor);
     const data = read(this.storage);
     let entry;
     if (kind === 'comment') entry = data.comments.find((item) => item.id === entryId);
@@ -537,7 +538,7 @@ export class LocalRepository {
     write(data, this.storage);
   }
 
-  async resetPreview(actorId) { requireAdmin(actorId); this.storage.removeItem(KEY); }
+  async resetPreview(actorId) { requireAdmin(actorId, this.trustedActor); this.storage.removeItem(KEY); }
 }
 
 function applyContribution(data, item) {

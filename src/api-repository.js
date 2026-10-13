@@ -14,6 +14,9 @@ export class ApiRepository {
     return value;
   }
 
+  authSession() { return this.request('/api/auth/me'); }
+  authPost(path, input = {}) { return this.request(`/api/auth/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }); }
+
   async snapshot() {
     if (await this.mode() === 'local') return this.local.snapshot();
     return (await this.request('/api/state')).data;

@@ -6,10 +6,14 @@
   "scripts": {
     "dev": "node server.mjs",
     "dev:remote": "node scripts/serve-remote.mjs",
-    "check": "node --check src/app.js && node --check src/repository.js && node --check src/api-repository.js && node --check src/image-compression.js && node --check src/rich-text.js && node --check src/content-filter.js && node --check scripts/seed-demo.mjs && node --check scripts/migrate-mysql.mjs && node --check scripts/serve-remote.mjs && node --check media.mjs && node --check db.mjs && node --check server.mjs"
+    "check": "node --check src/app.js && node --check src/repository.js && node --check src/api-repository.js && node --check src/image-compression.js && node --check src/rich-text.js && node --check src/content-filter.js && node --check scripts/seed-demo.mjs && node --check scripts/migrate-mysql.mjs && node --check scripts/serve-remote.mjs && node --check media.mjs && node --check db.mjs && node --check server.mjs && node --check auth.mjs && node --check auth-store.mjs && node --check access.mjs && node --check server-core.mjs && node --check passwords.mjs"
   },
   "dependencies": {
     "mysql2": "^3.24.5",
+    "nodemailer": "^10.1.0",
     "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
   }
 }

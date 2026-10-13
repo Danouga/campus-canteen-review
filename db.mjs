@@ -1,3 +1,4 @@
+import { createAuthStore } from './auth-store.mjs';
 import mysql from 'mysql2/promise';
 import sharp from 'sharp';
 import { LocalRepository, initialState } from './src/repository.js';
@@ -72,10 +73,15 @@ export async function connectDatabase(config) {
     }
   }
 
+  const authStore = await createAuthStore(pool);
   return {
+    authStore,
     async snapshot() {
       const [rows] = await pool.query('SELECT payload FROM app_state WHERE id = 1');
-      return new LocalRepository(new MemoryStorage(rows[0].payload)).snapshot();
+      const data = await new LocalRepository(new MemoryStorage(rows[0].payload)).snapshot();
+      const [users] = await pool.query('SELECT id, name FROM auth_users');
+      data.publicUserNames = Object.fromEntries(users.map((user) => [user.id, user.name]));
+      return data;
     },
     async media(hash, width = 0) {
       if (!/^[a-f0-9]{64}$/.test(hash)) return null;
@@ -93,14 +99,14 @@ export async function connectDatabase(config) {
       rememberMedia(key, item);
       return item;
     },
-    async action(method, args) {
+    async action(method, args, trustedActor = null) {
       if (!allowedActions.has(method) || !Array.isArray(args) || args.length > 4) throw new Error('操作无效。');
       const connection = await pool.getConnection();
       try {
         await connection.beginTransaction();
         const [rows] = await connection.query('SELECT payload FROM app_state WHERE id = 1 FOR UPDATE');
         const storage = new MemoryStorage(rows[0].payload);
-        const repository = new LocalRepository(storage);
+        const repository = new LocalRepository(storage, trustedActor);
         const result = await repository[method](...args);
         const converted = extractMedia(storage.payload || JSON.stringify(initialState()));
         const payload = converted.payload;

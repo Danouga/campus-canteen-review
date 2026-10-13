@@ -6,7 +6,7 @@ import { imageAsDataUrl } from './image-compression.js';
 const repo = createRepository();
 const root = document.querySelector('#app');
 const savedActorId = localStorage.getItem('canteen-guide-demo-actor');
-const state = { data: null, actorId: demoUsers.some((user) => user.id === savedActorId) ? savedActorId : 'demo-author', campusId: 'campus-a', view: 'home', canteenId: null, shopId: null, dishId: null, postId: null, postFilters: { campusId: '', canteenId: '', shopId: '', sort: 'newest' }, moderationFilters: { kind: 'all', status: 'all', sort: 'newest', query: '', limit: 12 }, profileLedgerLimit: { rewards: 20, votes: 20 }, query: '', modal: null, lightbox: null, commentSort: 'newest', adminCanteenId: null, profileOpen: false, profileTab: 'overview', notice: '', storageMode: 'local' };
+const state = { user: null, authOpen: false, authNotice: '', authMode: 'login', authDraft: { email: '', name: '', password: '', confirmPassword: '', code: '', challengeId: '', sentEmail: '', sentPurpose: '', resendAt: 0 }, authBusy: false, data: null, actorId: demoUsers.some((user) => user.id === savedActorId) ? savedActorId : 'demo-author', campusId: 'campus-a', view: 'home', canteenId: null, shopId: null, dishId: null, postId: null, postFilters: { campusId: '', canteenId: '', shopId: '', sort: 'newest' }, moderationFilters: { kind: 'all', status: 'all', sort: 'newest', query: '', limit: 12 }, profileLedgerLimit: { rewards: 20, votes: 20 }, query: '', modal: null, lightbox: null, commentSort: 'newest', adminCanteenId: null, profileOpen: false, profileTab: 'overview', notice: '', storageMode: 'local' };
 
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 const thumbnailUrl = (url, width = 320) => /^\/api\/media\/[a-f0-9]{64}$/.test(url || '') ? `${url}?w=${width}` : url;
@@ -18,12 +18,12 @@ const activeCanteens = () => state.data.canteens.filter((item) => item.status ==
 const activeShops = () => state.data.shops.filter((item) => item.status === 'active');
 const canteensHere = () => activeCanteens().filter((item) => item.campusId === state.campusId);
 const pendingCount = () => state.data.contributions.filter((item) => item.status === 'pending').length;
-const actor = () => demoUsers.find((user) => user.id === state.actorId);
+const actor = () => state.storageMode === 'mysql' ? state.user : demoUsers.find((user) => user.id === state.actorId);
 const unreadCount = () => state.data.contributions.filter((item) => item.ownerId === state.actorId && item.status !== 'pending' && !item.notificationReadAt).length;
 const postPreview = (post) => String(post.body || '').slice(0, 105);
 const postMarkup = (post) => post.contentHtml ? sanitizeRichHtml(post.contentHtml) : `<p>${escapeHtml(post.body || '').replace(/\n/g, '<br>')}</p>${post.photo ? `<img src="${escapeHtml(post.photo)}" alt="帖子图片" loading="lazy" decoding="async" />` : ''}`;
 const storageName = () => state.storageMode === 'mysql' ? 'MySQL 预览库' : '当前浏览器';
-const uploaderName = (ownerId, fallback) => demoUsers.find((user) => user.id === ownerId)?.name || fallback || '上传者未记录';
+const uploaderName = (ownerId, fallback) => state.data.publicUserNames?.[ownerId] || demoUsers.find((user) => user.id === ownerId)?.name || fallback || '上传者未记录';
 function reactionInfo(kind, targetId) {
   const ownerId = kind === 'comment' ? state.data.comments.find((item) => item.id === targetId)?.ownerId : kind === 'post' ? state.data.posts.find((item) => item.id === targetId)?.ownerId : kind === 'contribution' ? state.data.contributions.find((item) => item.id === targetId)?.ownerId : state.data.shops.flatMap((shop) => shop.tagRecords || []).find((item) => item.id === targetId)?.ownerId;
   const latestByActor = new Map();
@@ -75,7 +75,7 @@ function header() {
   return `<header class="site-header"><div class="header-inner">
     <button class="brand" data-view="home" aria-label="返回首页"><span class="brand-mark">${icon('bowl', 23)}</span><span>食间<span class="brand-dot">.</span><small>校园食堂指南</small></span></button>
     <nav class="main-nav" aria-label="主导航">${navButton('home', '首页')}${navButton('directory', '食堂展示')}${navButton('ranking', '推荐榜')}${navButton('posts', '美食贴')}${navButton('contribute', '一起共建')}${navButton('future', '未来计划')}${canReview(actor()) ? navButton('admin', `${actor()?.role === 'reviewer' ? '审核工作台' : '管理预览'}${pendingCount() ? `<span class="nav-count">${pendingCount()}</span>` : ''}`) : ''}</nav>
-    <button class="profile-trigger" data-action="toggle-profile" aria-label="用户信息${unreadCount() ? `，${unreadCount()} 条未读消息` : ''}" aria-expanded="${state.profileOpen}"><span class="profile-trigger-avatar">${escapeHtml(actor()?.name?.slice(0, 1) || '用')}</span><span>${escapeHtml(actor()?.name || '用户')}</span>${unreadCount() ? `<span class="nav-count">${unreadCount()}</span>` : ''}</button>
+    <button class="profile-trigger" data-action="toggle-profile" aria-label="用户信息${unreadCount() ? `，${unreadCount()} 条未读消息` : ''}" aria-expanded="${state.profileOpen || state.authOpen}"><span class="profile-trigger-avatar">${escapeHtml(actor()?.name?.slice(0, 1) || '用')}</span><span>${escapeHtml(actor()?.name || (state.storageMode === 'mysql' ? '登录' : '用户'))}</span>${unreadCount() ? `<span class="nav-count">${unreadCount()}</span>` : ''}</button>
     <button class="header-cta" data-view="rules">${icon('shield', 17)} 网站评价规则</button>
   </div></header>`;
 }
@@ -106,7 +106,8 @@ function directoryView() {
 function weeklyRanking() {
   const summary = recommendationSummary(state.data, state.actorId);
   const counts = new Map();
-  for (const vote of summary.weeklyVotes) counts.set(vote.shopId, (counts.get(vote.shopId) || 0) + 1);
+  if (state.data.weeklyVoteCounts) for (const item of state.data.weeklyVoteCounts) counts.set(item.shopId, item.count);
+  else for (const vote of summary.weeklyVotes) counts.set(vote.shopId, (counts.get(vote.shopId) || 0) + 1);
   return activeShops().map((shop) => ({ shop, count: counts.get(shop.id) || 0, canteen: activeCanteens().find((item) => item.id === shop.canteenId) })).sort((a, b) => b.count - a.count || a.shop.name.localeCompare(b.shop.name, 'zh-CN'));
 }
 function rankingRows(limit = Infinity) {
@@ -217,7 +218,7 @@ function shopView() {
   const visiblePhotos = shopImages(item);
   const cover = portraitForShop(item);
   const voteSummary = recommendationSummary(state.data, state.actorId);
-  const weeklyVotes = voteSummary.weeklyVotes.filter((vote) => vote.shopId === item.id).length;
+  const weeklyVotes = (state.data.weeklyVoteCounts ? state.data.weeklyVoteCounts.find((entry) => entry.shopId === item.id)?.count || 0 : voteSummary.weeklyVotes.filter((vote) => vote.shopId === item.id).length);
   const todayToShop = voteSummary.votesToday.filter((vote) => vote.shopId === item.id).length;
   const canVote = voteSummary.available > 0 && todayToShop < 3 && currentStatus(item, 'shop') !== 'unlisted';
   return `<main class="wrap detail-page">${breadcrumb({ campusId: canteen?.campusId, canteen, shop: item })}<div class="shop-detail-head"><div><span class="detail-label">${escapeHtml(canteen?.name || '')} / SHOP</span><h1><button class="title-edit" data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-field="name" data-canteen-id="${canteen?.id}" data-shop-id="${item.id}">${escapeHtml(item.name)} <span>✎</span></button></h1><p class="inline-edit-fields">${statusField(item, 'shop', canteen?.id, item.id)}<span>·</span>${tagSummary(item)}<span>·</span><button data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-field="location" data-canteen-id="${canteen?.id}" data-shop-id="${item.id}">${escapeHtml(item.location || '位置待补充')} ✎</button></p><div class="detail-facts"><span>${icon('clock', 18)} 食堂 ${escapeHtml(canteen?.hours || '营业时间待补充')}</span><button class="fact-edit" data-action="open-contribution" data-type="field-update" data-target-kind="shop" data-field="lateHours" data-canteen-id="${canteen?.id}" data-shop-id="${item.id}">${icon('spark', 18)} ${escapeHtml(item.lateHours || '店铺延时关门信息待补充')} <span class="edit-mark" aria-hidden="true">✎</span></button></div></div><button class="shop-detail-art" data-action="open-gallery" data-kind="shop" data-id="${item.id}" aria-label="查看${escapeHtml(item.name)}的图片">${cover ? `<img src="${escapeHtml(thumbnailUrl(cover.url, 640))}" alt="${escapeHtml(cover.caption)}" />` : icon('image', 54)}</button></div>
@@ -282,21 +283,22 @@ function profileVoteLedger() {
 
 function profileSidebar() {
   if (!state.profileOpen) return '';
+  if (state.storageMode === 'mysql' && !state.user) return '';
   const count = unreadCount();
   const votes = recommendationSummary(state.data, state.actorId);
   const points = recommendationLedger(state.data, state.actorId).points;
   const tab = (name, label) => `<button class="profile-tab ${state.profileTab === name || name === 'overview' && state.profileTab === 'vote-ledger' ? 'active' : ''}" data-action="profile-tab" data-tab="${name}">${label}${name === 'messages' && count ? `<span class="nav-count">${count}</span>` : ''}</button>`;
-  return `<div class="profile-backdrop" data-action="close-profile"><aside class="profile-sidebar" role="dialog" aria-modal="true" aria-label="用户信息" data-stop><div class="profile-top"><div><span class="section-kicker">MY SPACE</span><h2>用户信息</h2></div><button class="icon-button" data-action="close-profile" aria-label="关闭用户信息">${icon('close', 20)}</button></div><div class="profile-identity"><span class="profile-avatar">${escapeHtml(actor()?.name?.slice(0, 1) || '用')}</span><div><b>${escapeHtml(actor()?.name || '用户')}</b><small>演示身份 · 尚未接入学校登录</small></div></div><label class="profile-switch">切换演示身份<select id="demo-actor" aria-label="切换演示身份">${demoUsers.map((user) => `<option value="${user.id}" ${user.id === state.actorId ? 'selected' : ''}>${user.name}</option>`).join('')}</select></label><nav class="profile-tabs" aria-label="用户信息栏目">${tab('overview', '概览')}${tab('messages', '我的消息')}${tab('publications', '我的发布')}</nav><div class="profile-body">${state.profileTab === 'messages' ? profileMessages() : state.profileTab === 'publications' ? profilePublications() : state.profileTab === 'vote-ledger' ? profileVoteLedger() : `<div class="profile-section-intro"><h3>你好，${escapeHtml(actor()?.name || '用户')}</h3><p>共建记录和发布内容会逐步汇集到这里。</p></div><button class="profile-vote-card" data-action="profile-tab" data-tab="vote-ledger" aria-label="查看推荐票来源与消耗明细"><span>我的推荐票 ${icon('chevron', 16)}</span><strong>${votes.available}</strong><small>今日基础票 ${votes.baseRemaining} 张 · 可保留额外票 ${votes.bonus} 张</small></button><div class="profile-points-card"><span>我的积分 <small>试行</small></span><strong>${points}</strong><p>暂按每投 1 张推荐票获得 1 积分计算。兑换校园周边或学习用品等功能尚未开放。</p></div><button class="button outline small profile-ranking-link" data-view="ranking">查看本周推荐榜 ${icon('arrow', 16)}</button>`}</div></aside></div>`;
+  return `<div class="profile-backdrop" data-action="close-profile"><aside class="profile-sidebar" role="dialog" aria-modal="true" aria-label="用户信息" data-stop><div class="profile-top"><div><span class="section-kicker">MY SPACE</span><h2>用户信息</h2></div><button class="icon-button" data-action="close-profile" aria-label="关闭用户信息">${icon('close', 20)}</button></div><div class="profile-identity"><span class="profile-avatar">${escapeHtml(actor()?.name?.slice(0, 1) || '用')}</span><div><b>${escapeHtml(actor()?.name || (state.storageMode === 'mysql' ? '登录' : '用户'))}</b><small>${state.storageMode === 'mysql' ? escapeHtml(state.user.email) : '演示身份 · 本地预览'}</small></div></div>${state.storageMode === 'mysql' ? '<div class="account-actions"><button class="quiet-button" data-action="account-mode" data-mode="change-password">修改密码</button><button class="quiet-button" data-action="logout">退出登录</button></div>' : `<label class="profile-switch">切换演示身份<select id="demo-actor" aria-label="切换演示身份">${demoUsers.map((user) => `<option value="${user.id}" ${user.id === state.actorId ? 'selected' : ''}>${user.name}</option>`).join('')}</select></label>`}<nav class="profile-tabs" aria-label="用户信息栏目">${tab('overview', '概览')}${tab('messages', '我的消息')}${tab('publications', '我的发布')}</nav><div class="profile-body">${state.profileTab === 'messages' ? profileMessages() : state.profileTab === 'publications' ? profilePublications() : state.profileTab === 'vote-ledger' ? profileVoteLedger() : `<div class="profile-section-intro"><h3>你好，${escapeHtml(actor()?.name || (state.storageMode === 'mysql' ? '登录' : '用户'))}</h3><p>共建记录和发布内容会逐步汇集到这里。</p></div><button class="profile-vote-card" data-action="profile-tab" data-tab="vote-ledger" aria-label="查看推荐票来源与消耗明细"><span>我的推荐票 ${icon('chevron', 16)}</span><strong>${votes.available}</strong><small>今日基础票 ${votes.baseRemaining} 张 · 可保留额外票 ${votes.bonus} 张</small></button><div class="profile-points-card"><span>我的积分 <small>试行</small></span><strong>${points}</strong><p>暂按每投 1 张推荐票获得 1 积分计算。兑换校园周边或学习用品等功能尚未开放。</p></div><button class="button outline small profile-ranking-link" data-view="ranking">查看本周推荐榜 ${icon('arrow', 16)}</button>`}</div></aside></div>`;
 }
 
 function rulesView() {
   return `<main class="wrap content-page rules-page"><div class="page-intro"><span class="section-kicker">COMMUNITY GUIDE</span><h1>网站评价规则</h1><p>用真实、具体的信息帮助同学选择下一餐。本站不设置打分。以下规则会明确标出当前已启用的部分和后续草案。</p></div><div class="rules-grid">
     <section><span>01 · 已启用</span><h2>发布与共建</h2><p>店铺、菜品和美食贴可以评论，暂不开放回复。评论和帖子提交时使用演示屏蔽词筛选；共建申请由管理员审核，可暂示 24 小时或直接收录。</p></section>
-    <section><span>02 · 演示中</span><h2>赞同与反对</h2><p>标签、评论、帖子与共建信息可赞同或反对。每个演示身份对同一内容只保留一次有效态度，可撤销或改选；不能给自己的内容表态。</p></section>
+    <section><span>02 · 演示中</span><h2>赞同与反对</h2><p>标签、评论、帖子与共建信息可赞同或反对。每个用户对同一内容只保留一次有效态度，可撤销或改选；不能给自己的内容表态。</p></section>
     <section><span>03 · 演示中</span><h2>隐藏与复核</h2><p>评论、帖子或标签收到至少 5 个反对，且反对数达到赞同数的 2 倍时自动隐藏，由管理员复核。暂示信息获得至少 5 个不同用户赞同且赞同多于反对时可固定；获得至少 5 个不同用户反对且反对不少于赞同时提前撤销。已固定信息集中被反对时交管理员复核。</p></section>
     <section><span>04 · 演示中</span><h2>推荐票与积分</h2><p>每人每天获得 1 张基础票，当天未用则失效；额外奖励票可保留，投票时优先使用基础票。同一店铺每人每天最多投 3 张。店铺票数每周一 00:00（北京时间）重新统计，历史记录保留，额外票不随周榜清零。下架店铺暂停投票。积分暂按每投 1 票累计 1 分，兑换功能尚未开放。</p></section>
-    <section><span>05 · 演示中</span><h2>额外推荐票</h2><p>评论获得 5 个不同用户赞同、帖子获得 10 个不同用户赞同，或共建申请被固定收录时，各奖励 1 张；每条内容只奖励一次，不计本人表态。当前只有 4 个演示身份，赞同门槛需在接入更多真实用户后才能自然达到。</p></section>
-    <section><span>06 · 当前身份说明</span><h2>演示与正式开放</h2><p>当前的发布人、浏览人、审核员、管理员可以随时切换，不代表已验证身份，内容保存在${storageName()}。投票和奖励可用于流程测试；正式开放前需接入学校身份、权限校验与反刷机制。</p></section>
+    <section><span>05 · 演示中</span><h2>额外推荐票</h2><p>评论获得 5 个不同用户赞同、帖子获得 10 个不同用户赞同，或共建申请被固定收录时，各奖励 1 张；每条内容只奖励一次，不计本人表态。${state.storageMode === 'mysql' ? '奖励根据已登录账户的有效赞同计算。' : '本地预览仅有 4 个演示身份，赞同门槛需接入更多用户后才能自然达到。'}</p></section>
+    <section><span>06 · 当前身份说明</span><h2>演示与正式开放</h2><p>${state.storageMode === 'mysql' ? '使用邮箱和网站密码登录；注册、修改密码及找回密码需要邮箱验证，首次注册均为普通用户。管理员和审核员由网站维护人员单独设置，邮箱注册无法获得这些权限。邮箱验证不代表学校身份，学校身份绑定后续开放。' : '本地浏览器预览可切换演示身份，用于流程测试；MySQL 模式使用邮箱验证码登录与服务端权限校验。'}</p></section>
   </div></main>`;
 }
 
@@ -394,7 +396,7 @@ function adminView() {
   const provisional = state.data.contributions.filter((item) => item.status === 'provisional');
   const archived = state.data.canteens.filter((item) => item.status === 'archived').map((item) => ({ ...item, kind: 'canteen' }))
     .concat(state.data.shops.filter((item) => item.status === 'archived').map((item) => ({ ...item, kind: 'shop' })));
-  return `<main class="wrap admin-page"><div class="admin-top"><div><span class="section-kicker">LOCAL ADMIN PREVIEW</span><h1>${actor()?.role === 'reviewer' ? '审核工作台' : '管理工作台'}</h1><p>${actor()?.role === 'reviewer' ? '可审核共建申请、处理内容复核；正式资料由管理员直接维护。' : '管理员可审核申请并直接维护资料。'}当前使用可切换的演示身份，正式上线前需接入身份验证。</p></div><span class="preview-tag">仅供本地预览</span></div><div class="admin-stats"><div><strong>${pending.length}</strong><span>待审核申请</span></div><div><strong>${provisional.length}</strong><span>暂示中</span></div><div><strong>${activeCanteens().length}</strong><span>已收录食堂</span></div><div><strong>${activeShops().length}</strong><span>已收录店铺</span></div></div>
+  return `<main class="wrap admin-page"><div class="admin-top"><div><span class="section-kicker">LOCAL ADMIN PREVIEW</span><h1>${actor()?.role === 'reviewer' ? '审核工作台' : '管理工作台'}</h1><p>${actor()?.role === 'reviewer' ? '可审核共建申请、处理内容复核；正式资料由管理员直接维护。' : '管理员可审核申请并直接维护资料。'}${state.storageMode === 'mysql' ? '当前权限依据已验证邮箱账户的服务端角色。' : '当前使用可切换的本地演示身份。'}</p></div><span class="preview-tag">仅供本地预览</span></div><div class="admin-stats"><div><strong>${pending.length}</strong><span>待审核申请</span></div><div><strong>${provisional.length}</strong><span>暂示中</span></div><div><strong>${activeCanteens().length}</strong><span>已收录食堂</span></div><div><strong>${activeShops().length}</strong><span>已收录店铺</span></div></div>
   <section class="admin-section"><div class="admin-section-head"><div><h2>共建申请</h2><p>审核后选择暂示 24 小时、直接固定或驳回。</p></div></div>${pending.length ? pending.map(reviewCard).join('') : `<div class="admin-empty">${icon('check', 25)} 当前没有待审核申请</div>`}</section>
   ${provisional.length ? `<section class="admin-section"><div class="admin-section-head"><div><h2>暂示中的资料</h2><p>到期会自动停止展示；管理员或审核员可提前固定或撤销。</p></div></div>${provisional.map((item) => `<div class="manage-row"><span class="status-pill">暂示中</span><span><b>${escapeHtml(item.title)}</b><small>至 ${dateLabel(item.expiresAt)}</small></span><button class="mini-add" data-action="revoke-provisional" data-id="${item.id}">撤销</button><button class="mini-add" data-action="fix-provisional" data-id="${item.id}">固定收录</button></div>`).join('')}</section>` : ''}
   ${actor()?.role === 'admin' ? adminMaintenance() : ''}${adminModeration()}
@@ -588,14 +590,17 @@ function canteenPhotosModal() {
 }
 
 function render() {
-  root.innerHTML = `${header()}${state.notice ? `<div class="toast" role="status">${escapeHtml(state.notice)}<button data-action="dismiss-notice" aria-label="关闭提示">${icon('close', 15)}</button></div>` : ''}${state.view === 'home' ? home() : state.view === 'directory' ? directoryView() : state.view === 'ranking' ? rankingView() : ['posts', 'shop-posts'].includes(state.view) ? postsView() : state.view === 'post-detail' ? postDetailView() : state.view === 'rules' ? rulesView() : state.view === 'canteen' ? canteenView() : state.view === 'shop' ? shopView() : state.view === 'dish' ? dishView() : state.view === 'contribute' ? contributeView() : state.view === 'admin' && canReview(actor()) ? adminView() : futureView()}${footer()}${profileSidebar()}${modal()}${lightbox()}`;
+  root.innerHTML = `${header()}${state.notice ? `<div class="toast" role="status">${escapeHtml(state.notice)}<button data-action="dismiss-notice" aria-label="关闭提示">${icon('close', 15)}</button></div>` : ''}${state.view === 'home' ? home() : state.view === 'directory' ? directoryView() : state.view === 'ranking' ? rankingView() : ['posts', 'shop-posts'].includes(state.view) ? postsView() : state.view === 'post-detail' ? postDetailView() : state.view === 'rules' ? rulesView() : state.view === 'canteen' ? canteenView() : state.view === 'shop' ? shopView() : state.view === 'dish' ? dishView() : state.view === 'contribute' ? contributeView() : state.view === 'admin' && canReview(actor()) ? adminView() : futureView()}${footer()}${profileSidebar()}${accountDialog()}${modal()}${lightbox()}`;
   upgradeSelects();
   if (root.querySelector('.lightbox-full')?.complete && root.querySelector('.lightbox-full')?.naturalWidth) root.querySelector('.lightbox-image-stack')?.classList.add('loaded');
-  document.body.classList.toggle('modal-open', Boolean(state.modal || state.profileOpen || state.lightbox));
+  const overlayOpen = Boolean(state.modal || state.profileOpen || state.authOpen || state.lightbox);
+  document.documentElement.classList.toggle('modal-open', overlayOpen);
+  document.body.classList.toggle('modal-open', overlayOpen);
 }
 
 async function refresh(initial = false) {
   state.storageMode = await repo.mode();
+  if (state.storageMode === 'mysql') { const session = await repo.authSession(); state.user = session.user; if (!state.user && state.authMode === 'change-password') state.authMode = 'login'; state.actorId = session.user?.id || null; }
   state.data = await repo.snapshot();
   if (state.data.contributions.some((item) => item.status === 'provisional' && Date.parse(item.expiresAt) <= Date.now())) {
     await repo.expireProvisional();
@@ -634,7 +639,7 @@ function loadRoute() {
   else if (['posts', 'ranking', 'contribute', 'future', 'rules', 'admin'].includes(parts[0])) state.view = parts[0];
 }
 function go(view) { state.view = view; state.modal = null; state.lightbox = null; state.profileOpen = false; state.query = ''; history.pushState({}, '', routePath()); window.scrollTo({ top: 0, behavior: 'smooth' }); render(); }
-window.addEventListener('popstate', () => { if (!state.data) return; loadRoute(); state.modal = null; state.lightbox = null; state.profileOpen = false; render(); });
+window.addEventListener('popstate', () => { if (!state.data) return; loadRoute(); state.modal = null; state.lightbox = null; state.profileOpen = false; closeAccountDialog(); render(); });
 
 function fuzzyMatch(text, query) {
   const haystack = text.toLocaleLowerCase();
@@ -667,6 +672,7 @@ root.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowDown') { event.preventDefault(); updateShopOptions(event.target.value); root.querySelector('#post-shop-options button')?.focus(); return; }
     if (event.key === 'Escape') { root.querySelector('#post-shop-options').hidden = true; event.target.setAttribute('aria-expanded', 'false'); return; }
   }
+  if (event.key === 'Escape' && state.authOpen) { closeAccountDialog(); render(); return; }
   if (event.key === 'Escape' && state.profileOpen) { state.profileOpen = false; render(); return; }
   if (!['Enter', ' '].includes(event.key)) return;
   const card = event.target.closest('.dish-row[data-dish], .post-card[data-post]');
@@ -675,7 +681,21 @@ root.addEventListener('keydown', (event) => {
   card.click();
 });
 
+// Backdrop dismissal requires the press and release to both start outside the panel.
+const backdropSelector = '.auth-backdrop, .profile-backdrop, .modal-backdrop, .lightbox-backdrop';
+let backdropGesture = null;
+root.addEventListener('pointerdown', event => {
+  const backdrop = event.target.closest(backdropSelector);
+  backdropGesture = backdrop ? { backdrop, pointerId: event.pointerId, outside: event.target === backdrop, complete: false } : null;
+});
+root.addEventListener('pointerup', event => {
+  if (backdropGesture) backdropGesture.complete = backdropGesture.outside && backdropGesture.pointerId === event.pointerId && event.target === backdropGesture.backdrop;
+});
+root.addEventListener('pointercancel', () => { if (backdropGesture) backdropGesture.complete = false; });
+
 root.addEventListener('click', async (event) => {
+  const gesture = backdropGesture;
+  backdropGesture = null;
   if (!event.target.closest('.choice-select')) for (const wrapper of root.querySelectorAll('.choice-select.open')) { wrapper.classList.remove('open'); wrapper.querySelector('.choice-select-options').hidden = true; wrapper.querySelector('.choice-select-trigger').setAttribute('aria-expanded', 'false'); }
   if (event.target.matches('.rich-content img')) {
     const post = state.data.posts.find((entry) => entry.id === state.postId);
@@ -683,6 +703,8 @@ root.addEventListener('click', async (event) => {
   }
   const target = event.target.closest('[data-action], [data-view], [data-campus], [data-canteen], [data-shop], [data-dish], [data-post]');
   if (!target) return;
+  // A field click can resolve to the backdrop; ignore it before changing state.
+  if (target.matches(backdropSelector) && (event.target.closest('[data-stop]') || gesture && !gesture.complete)) return;
   if (target.matches('[data-stop]')) return;
   if (target.dataset.campus) { state.campusId = target.dataset.campus; state.query = ''; if (target.dataset.view) go(target.dataset.view); else { history.pushState({}, '', routePath()); render(); } return; }
   if (target.dataset.view) { go(target.dataset.view); return; }
@@ -691,6 +713,11 @@ root.addEventListener('click', async (event) => {
   if (target.dataset.dish) { state.dishId = target.dataset.dish; state.shopId = target.dataset.shopId; go('dish'); return; }
   if (target.dataset.post) { state.postId = target.dataset.post; go('post-detail'); return; }
   const command = target.dataset.action;
+  if (command === 'cancel-password-change') { if (state.authBusy) return; closeAccountDialog(); state.profileOpen = Boolean(state.user); render(); return; }
+  if (command === 'account-mode') { if (state.authBusy) return; captureAuthDraft(); state.authOpen = true; state.profileOpen = false; state.authNotice = ''; state.authMode = target.dataset.mode; state.authDraft.password = ''; state.authDraft.confirmPassword = ''; state.authDraft.code = ''; state.authDraft.challengeId = ''; if (state.authMode === 'change-password') state.authDraft.email = state.user?.email || ''; render(); return; }
+  if (command === 'send-login-code') { await sendLoginCode(); return; }
+  if (command === 'logout') { try { await repo.authPost('logout'); state.modal = null; state.authMode = 'login'; state.authDraft.password = ''; state.authDraft.confirmPassword = ''; state.profileTab = 'overview'; await refresh(); } catch (error) { showNotice(error.message); } return; }
+  if (state.storageMode === 'mysql' && !state.user && ['open-post', 'open-contribution', 'react', 'vote-shop'].includes(command)) { openAccountDialog('login'); render(); showNotice('登录后即可参与共建与评价。'); return; }
   const maintenanceActions = ['select-admin-canteen', 'manage-canteen-photos', 'edit-campus', 'edit-canteen', 'edit-shop', 'manage-shop-content', 'edit-dish', 'edit-photo', 'remove-canteen', 'remove-shop', 'remove-content', 'reset-preview', 'restore-entry', 'remove-canteen-photo', 'confirm-operation'];
   if (maintenanceActions.includes(command) && actor()?.role !== 'admin') { showNotice('只有管理员可以直接维护资料。'); return; }
   if (command === 'toggle-choice') { const wrapper = target.closest('.choice-select'); const shouldOpen = !wrapper.classList.contains('open'); for (const other of root.querySelectorAll('.choice-select.open')) { other.classList.remove('open'); other.querySelector('.choice-select-options').hidden = true; other.querySelector('.choice-select-trigger').setAttribute('aria-expanded', 'false'); } wrapper.classList.toggle('open', shouldOpen); wrapper.querySelector('.choice-select-options').hidden = !shouldOpen; target.setAttribute('aria-expanded', String(shouldOpen)); return; }
@@ -698,8 +725,9 @@ root.addEventListener('click', async (event) => {
   if (command === 'open-lightbox') { const photo = target.querySelector('img'); state.lightbox = { url: target.dataset.fullUrl || photo?.src || '', caption: target.dataset.caption || photo?.alt || '图片', category: target.dataset.category || photo?.alt || '图片', description: target.dataset.description || '', uploader: uploaderName(target.dataset.ownerId, target.dataset.uploader) }; render(); return; }
   if (command === 'close-lightbox') { if (event.target.closest('[data-stop]') && target.classList.contains('lightbox-backdrop')) return; state.lightbox = null; render(); return; }
   if (command === 'pick-post-shop') { const shop = activeShops().find((entry) => entry.id === target.dataset.id); const canteen = activeCanteens().find((entry) => entry.id === shop?.canteenId); if (!shop) return; state.modal.selectedShopId = shop.id; root.querySelector('#post-shop-id').value = shop.id; root.querySelector('#post-shop-search').value = `${canteen?.name || '食堂'} · ${shop.name}`; root.querySelector('#post-shop-options').hidden = true; root.querySelector('#post-shop-search').setAttribute('aria-expanded', 'false'); return; }
-  if (command === 'toggle-profile') { state.profileOpen = !state.profileOpen; state.profileTab = 'overview'; render(); return; }
-  if (command === 'close-profile') { if (event.target.closest('[data-stop]') && target.classList.contains('profile-backdrop')) return; state.profileOpen = false; render(); return; }
+  if (command === 'toggle-profile') { if (state.storageMode === 'mysql' && !state.user) openAccountDialog('login'); else state.profileOpen = !state.profileOpen; state.profileTab = 'overview'; render(); return; }
+  if (command === 'close-account') { closeAccountDialog(); render(); return; }
+  if (command === 'close-profile') { state.profileOpen = false; render(); return; }
   if (command === 'profile-tab') { state.profileTab = target.dataset.tab; render(); return; }
   if (command === 'ledger-more') { state.profileLedgerLimit[target.dataset.kind] += 20; render(); return; }
   if (command === 'close-modal') { if (event.target.closest('[data-stop]') && target.classList.contains('modal-backdrop')) return; state.modal = null; render(); return; }
@@ -757,6 +785,7 @@ root.addEventListener('click', async (event) => {
 });
 
 root.addEventListener('input', (event) => {
+  if (event.target.closest('#email-login-form')) { captureAuthDraft(); return; }
   if (event.target.id === 'moderation-search') { state.moderationFilters.query = event.target.value; state.moderationFilters.limit = 12; root.querySelector('#moderation-results').innerHTML = moderationResults(); return; }
   if (event.target.id === 'post-shop-search') { root.querySelector('#post-shop-id').value = ''; state.modal.selectedShopId = null; updateShopOptions(event.target.value); return; }
   if (event.target.id === 'search') {
@@ -781,6 +810,7 @@ root.addEventListener('change', async (event) => {
   }
   if (event.target.id === 'comment-sort') { state.commentSort = event.target.value; render(); return; }
   if (event.target.id === 'demo-actor') {
+    if (state.storageMode === 'mysql') return;
     state.actorId = event.target.value;
     localStorage.setItem('canteen-guide-demo-actor', state.actorId);
     if (state.view === 'admin' && !canReview(actor())) state.view = 'home';
@@ -862,9 +892,11 @@ root.addEventListener('change', async (event) => {
 });
 
 root.addEventListener('submit', async (event) => {
+  if (event.target.id === 'email-login-form') { event.preventDefault(); await submitAccountForm(); return; }
   if (!['contribution-form', 'edit-form', 'comment-form', 'review-form', 'shop-content-form', 'post-form', 'canteen-photo-form'].includes(event.target.id)) return;
   event.preventDefault();
   const form = event.target;
+  if (state.storageMode === 'mysql' && !state.user) { state.modal = null; openAccountDialog('login'); render(); showNotice('请先登录。'); return; }
   const values = Object.fromEntries(new FormData(form).entries());
   try {
     if (['edit-form', 'shop-content-form', 'canteen-photo-form'].includes(form.id) && actor()?.role !== 'admin') throw new Error('只有管理员可以直接维护资料。');
@@ -937,3 +969,59 @@ window.setInterval(async () => {
     }
   } catch { /* The next user action will retry loading preview data. */ }
 }, 60_000);
+
+function openAccountDialog(mode = 'login') { state.authOpen = true; state.profileOpen = false; state.authMode = mode; state.authNotice = ''; }
+function closeAccountDialog() { state.authOpen = false; state.authMode = 'login'; state.authNotice = ''; state.authDraft.password = ''; state.authDraft.confirmPassword = ''; state.authDraft.code = ''; }
+function accountDialog() {
+  if (!state.authOpen || state.storageMode !== 'mysql') return '';
+
+  const draft = state.authDraft;
+  const mode = state.authMode;
+  const isLogin = mode === 'login';
+  const isChange = mode === 'change-password';
+  const title = { login: '邮箱登录', register: '注册账户', 'reset-password': '找回 / 设置密码', 'change-password': '修改密码' }[mode];
+  const intro = { login: '输入邮箱和网站密码登录。', register: '验证邮箱并设置密码，注册后为普通用户。', 'reset-password': '验证邮箱后设置新密码。已有账户首次设置密码也从这里开始。', 'change-password': '验证码将发送到你的账户邮箱。修改后需重新登录。' }[mode];
+  const wait = Math.max(0, Math.ceil((draft.resendAt - Date.now()) / 1000));
+  return `<div class="auth-backdrop" data-action="close-account"><section class="auth-dialog" role="dialog" aria-modal="true" aria-label="${title}" data-stop><div class="auth-dialog-head"><div><span class="section-kicker">WELCOME TO 食间</span><h2>${title}</h2></div><button class="icon-button" data-action="close-account" aria-label="关闭">${icon('close', 20)}</button></div><div class="auth-dialog-body"><p class="login-intro">${intro}</p>${!isChange ? `<nav class="account-mode-tabs"><button type="button" class="${isLogin ? 'active' : ''}" data-action="account-mode" data-mode="login">登录</button><button type="button" class="${mode === 'register' ? 'active' : ''}" data-action="account-mode" data-mode="register">注册</button></nav>` : ''}${state.authNotice ? `<div class="auth-feedback" role="status">${escapeHtml(state.authNotice)}</div>` : ''}<form id="email-login-form" class="modal-form"><label>邮箱<input name="email" type="email" autocomplete="email" maxlength="254" required ${isChange || state.authBusy ? 'readonly' : ''} value="${escapeHtml(isChange ? state.user.email : draft.email)}" placeholder="你的邮箱地址" /></label>${mode === 'register' ? `<label>昵称（选填）<input name="name" maxlength="20" ${state.authBusy ? 'readonly' : ''} value="${escapeHtml(draft.name)}" placeholder="2–20 字，留空自动生成" /></label>` : ''}<label>${isLogin ? '登录密码' : '新密码'}<input name="password" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" minlength="8" maxlength="128" required ${state.authBusy ? 'readonly' : ''} value="${escapeHtml(draft.password)}" placeholder="${isLogin ? '输入网站密码' : '8–128 个字符'}" /></label>${!isLogin ? `<label>确认密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required ${state.authBusy ? 'readonly' : ''} value="${escapeHtml(draft.confirmPassword)}" placeholder="再次输入新密码" /></label><div class="login-code-row"><label>验证码<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required ${state.authBusy ? 'readonly' : ''} value="${escapeHtml(draft.code)}" placeholder="6 位验证码" /></label><button type="button" class="button outline small" data-action="send-login-code" ${state.authBusy || wait ? 'disabled' : ''}>${wait ? wait + ' 秒后重发' : '发送验证码'}</button></div><p class="small-note">验证码 10 分钟有效，仅用于本次操作。修改或重置密码后，所有设备需重新登录。</p>` : '<p class="small-note">使用网站密码登录，无需每次接收验证码。</p>'}<button class="button primary full" ${state.authBusy ? 'disabled' : ''}>${state.authBusy ? '正在处理…' : { login: '登录', register: '验证并注册', 'reset-password': '重置密码', 'change-password': '确认修改密码' }[mode]}</button></form>${isLogin ? '<button class="quiet-button account-reset-link" data-action="account-mode" data-mode="reset-password">忘记密码</button>' : `<button class="quiet-button account-reset-link" data-action="${isChange ? 'cancel-password-change' : 'account-mode'}" data-mode="login">${isChange ? '返回用户信息' : '返回登录'}</button>`}</div></section></div>`;
+}
+function captureAuthDraft() {
+  const form = root.querySelector('#email-login-form');
+  if (!form) return;
+  for (const key of ['email', 'name', 'code', 'password', 'confirmPassword']) if (form.elements[key]) state.authDraft[key] = form.elements[key].value;
+}
+async function sendLoginCode() {
+  if (state.authBusy || state.authDraft.resendAt > Date.now()) return;
+  captureAuthDraft();
+  const email = state.authDraft.email.trim().toLowerCase();
+  const purpose = state.authMode;
+  state.authBusy = true; render();
+  try {
+    const result = await repo.authPost('send-code', { email, purpose });
+    state.authDraft.challengeId = result.challengeId;
+    state.authDraft.sentPurpose = purpose;
+    state.authDraft.sentEmail = email;
+    state.authDraft.resendAt = Date.now() + result.retryAfter * 1000;
+    state.authDraft.code = '';
+    state.authNotice = '验证码已发送，请检查收件箱或垃圾邮件。';
+  } catch (error) { state.authNotice = error.message; }
+  finally { state.authBusy = false; render(); }
+}
+async function submitAccountForm() {
+  if (state.authBusy) return;
+  captureAuthDraft();
+  if (state.authMode !== 'login' && (!state.authDraft.challengeId || state.authDraft.email.trim().toLowerCase() !== state.authDraft.sentEmail || state.authDraft.sentPurpose !== state.authMode)) { state.authNotice = '请先为当前邮箱获取验证码。'; render(); return; }
+  state.authBusy = true; render();
+  try {
+    const mode = state.authMode;
+    await repo.authPost(mode, state.authDraft);
+    state.authMode = 'login';
+    state.authDraft = { email: '', name: '', password: '', confirmPassword: '', code: '', challengeId: '', sentEmail: '', sentPurpose: '', resendAt: 0 };
+    state.profileTab = 'overview';
+    state.authOpen = !['login', 'register'].includes(mode);
+    state.profileOpen = false;
+    await refresh(); state.authNotice = mode === 'register' ? '注册成功，欢迎来到食间。' : mode === 'login' ? '登录成功，欢迎来到食间。' : '密码已更新，请使用新密码登录。';
+    if (!state.authOpen) showNotice(state.authNotice);
+  } catch (error) { state.authNotice = error.message; }
+  finally { state.authBusy = false; render(); }
+}
+setInterval(() => { const button = root.querySelector('[data-action="send-login-code"]'); if (button && !state.authBusy) { const wait = Math.max(0, Math.ceil((state.authDraft.resendAt - Date.now()) / 1000)); button.disabled = wait > 0; button.textContent = wait ? wait + ' 秒后重发' : '发送验证码'; } }, 1000);

@@ -1,8 +1,10 @@
 // Add a small, clearly labeled dataset to the running local MySQL preview.
-const base = 'http://127.0.0.1:4174';
+const base = process.env.SEED_BASE_URL || 'http://127.0.0.1:4174';
+const cookie = process.env.SEED_SESSION_COOKIE;
+if (!cookie) throw new Error('邮箱登录启用后，测试数据脚本需要 SEED_SESSION_COOKIE（已登录管理员的会话 Cookie）。');
 
 async function request(path, options) {
-  const response = await fetch(`${base}${path}`, options);
+  const response = await fetch(`${base}${path}`, { ...options, headers: { ...options?.headers, Cookie: cookie } });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
   return result;
