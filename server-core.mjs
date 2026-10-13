@@ -10,6 +10,24 @@ function json(response, status, value) {
   response.end(JSON.stringify(value));
 }
 
+// 同源校验：WorkBuddy 反向代理会改写 host 头，故不直接比对 host。
+// 放行策略：本地 localhost/127.0.0.1、精确白名单(AUTH_ALLOWED_ORIGINS)、WorkBuddy 托管子域(*.app.workbuddy.host)，
+// 或 Origin 与代理转发头(x-forwarded-host)/host 一致。
+function assertSameOrigin(request, config) {
+  const origin = request.headers.origin;
+  if (!origin) return;
+  let originUrl;
+  try { originUrl = new URL(origin); } catch { throw new AuthError('来源无效。', 403); }
+  if (originUrl.hostname === 'localhost' || originUrl.hostname === '127.0.0.1') return;
+  const allowed = String(config.AUTH_ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (allowed.length && allowed.includes(origin)) return;
+  if (originUrl.hostname.endsWith('.app.workbuddy.host')) return;
+  for (const h of [request.headers['x-forwarded-host'], request.headers.host].filter(Boolean)) {
+    if (origin === `${originUrl.protocol}//${h}`) return;
+  }
+  throw new AuthError('来源无效。', 403);
+}
+
 async function bodyJson(request, limit = 7_000_000) {
   let raw = '';
   for await (const chunk of request) {
@@ -34,9 +52,7 @@ return createServer(async (request, response) => {
     try {
       if (pathname === '/api/auth/me' && request.method === 'GET') { json(response, 200, { user: await auth.user(request), mailReady: auth.ready }); return; }
       if (request.method !== 'POST') throw new AuthError('请求方式无效。', 405);
-      const origin = request.headers.origin;
-      const expected = `${config.AUTH_COOKIE_SECURE === 'true' ? 'https' : 'http'}://${request.headers.host}`;
-      if (origin && origin !== expected) throw new AuthError('来源无效。', 403);
+      assertSameOrigin(request, config);
       if (!request.headers['content-type']?.startsWith('application/json')) throw new AuthError('请求格式无效。', 415);
       const input = await bodyJson(request, 4096);
       const ip = request.socket.remoteAddress || 'unknown';
@@ -71,8 +87,7 @@ return createServer(async (request, response) => {
   }
   if (pathname === '/api/action' && request.method === 'POST') {
     if (!database) { json(response, 404, { error: '未启用数据库。' }); return; }
-    const origin = request.headers.origin;
-    if (origin && origin !== `${config.AUTH_COOKIE_SECURE === 'true' ? 'https' : 'http'}://${request.headers.host}`) { json(response, 403, { error: '来源无效。' }); return; }
+    assertSameOrigin(request, config);
     if (!request.headers['content-type']?.startsWith('application/json')) { json(response, 415, { error: '请求格式无效。' }); return; }
     try {
       const input = await bodyJson(request);
