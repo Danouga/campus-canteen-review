@@ -1,4 +1,7 @@
 node_modules/
 .npm-cache/
 .env.local
+.env.*
+!.env.example
+*.bak
 data/

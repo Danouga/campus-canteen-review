@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",
-    "check": "node --check src/app.js && node --check src/repository.js && node --check src/api-repository.js && node --check src/image-compression.js && node --check src/rich-text.js && node --check src/content-filter.js && node --check scripts/seed-demo.mjs && node --check media.mjs && node --check db.mjs && node --check server.mjs && node --check auth.mjs && node --check auth-store.mjs && node --check access.mjs && node --check server-core.mjs && node --check passwords.mjs"
+    "check": "node --check src/app.js && node --check src/repository.js && node --check src/api-repository.js && node --check src/image-compression.js && node --check src/rich-text.js && node --check src/content-filter.js && node --check scripts/seed-demo.mjs && node --check media.mjs && node --check db.mjs && node --check server.mjs && node --check auth.mjs && node --check auth-store.mjs && node --check access.mjs && node --check server-core.mjs && node --check passwords.mjs && node --check store.mjs && node --check zip.mjs",
+    "test:security": "node tests/file-storage-security.mjs"
   },
   "dependencies": {
     "nodemailer": "^10.1.0"

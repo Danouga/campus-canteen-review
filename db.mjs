@@ -69,8 +69,7 @@ export async function connectDatabase(config = {}) {
   await store.load();
   await maybeSeed(store, here);
   if (store.data.state == null) {
-    store.data.state = JSON.stringify(initialState());
-    await store.persist();
+    await store.transaction(async data => { data.state = JSON.stringify(initialState()); });
   }
 
   const authStore = await createAuthStore(store);

@@ -11,21 +11,18 @@ function json(response, status, value) {
   response.end(JSON.stringify(value));
 }
 
-// 同源校验：WorkBuddy 反向代理会改写 host 头，故不直接比对 host。
-// 放行策略：本地 localhost/127.0.0.1、精确白名单(AUTH_ALLOWED_ORIGINS)、WorkBuddy 托管子域(*.app.workbuddy.host)，
-// 或 Origin 与代理转发头(x-forwarded-host)/host 一致。
+// Proxy deployments must configure the site's exact public origin.
+// Forwarded headers and other tenants' hosted domains are not authorization.
 function assertSameOrigin(request, config) {
   const origin = request.headers.origin;
   if (!origin) return;
   let originUrl;
   try { originUrl = new URL(origin); } catch { throw new AuthError('来源无效。', 403); }
-  if (originUrl.hostname === 'localhost' || originUrl.hostname === '127.0.0.1') return;
+  if (!['http:', 'https:'].includes(originUrl.protocol) || originUrl.origin !== origin) throw new AuthError('来源无效。', 403);
   const allowed = String(config.AUTH_ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (allowed.length && allowed.includes(origin)) return;
-  if (originUrl.hostname.endsWith('.app.workbuddy.host')) return;
-  for (const h of [request.headers['x-forwarded-host'], request.headers.host].filter(Boolean)) {
-    if (origin === `${originUrl.protocol}//${h}`) return;
-  }
+  const directProtocol = request.socket.encrypted ? 'https:' : 'http:';
+  if (origin === `${directProtocol}//${request.headers.host}`) return;
   throw new AuthError('来源无效。', 403);
 }
 
@@ -111,9 +108,9 @@ return createServer(async (request, response) => {
   }
   if (pathname === '/api/action' && request.method === 'POST') {
     if (!database) { json(response, 404, { error: '未启用数据库。' }); return; }
-    assertSameOrigin(request, config);
-    if (!request.headers['content-type']?.startsWith('application/json')) { json(response, 415, { error: '请求格式无效。' }); return; }
     try {
+      assertSameOrigin(request, config);
+      if (!request.headers['content-type']?.startsWith('application/json')) { json(response, 415, { error: '请求格式无效。' }); return; }
       const input = await bodyJson(request);
       const user = await auth.user(request);
       const args = bindActor(input.method, input.args, user);

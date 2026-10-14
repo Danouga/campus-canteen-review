@@ -95,7 +95,7 @@ export async function createAuthStore(store) {
             token_hash: input.sessionHash, user_id: user.id,
             expires_at: new Date(input.sessionExpires).toISOString(), created_at: new Date(now).toISOString()
           });
-          return user;
+          return { id: user.id, email: user.email, name: user.name, role: user.role };
         }
         if (!existing || existing.status !== 'active' || (input.purpose === 'change-password' && input.actorId !== existing.id)) return null;
         existing.password_hash = input.passwordHash;
