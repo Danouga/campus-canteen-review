@@ -1,0 +1,22 @@
+{
+  "resourceChecks": [
+    {
+      "file": "src/app.js",
+      "status": 200,
+      "matchesRelease": true
+    },
+    {
+      "file": "src/repository.js",
+      "status": 200,
+      "matchesRelease": true
+    },
+    {
+      "file": "src/rich-text.js",
+      "status": 200,
+      "matchesRelease": true
+    }
+  ],
+  "migratedAdminPosts": 2,
+  "remainingDemoAdminPosts": 0,
+  "interactionVerification": "User confirmed functional testing passed; no writes performed by Codex"
+}
