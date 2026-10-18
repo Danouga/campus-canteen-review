@@ -1,0 +1,96 @@
+import assert from 'node:assert/strict';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { JSDOM } from 'jsdom';
+import * as domain from '../src/repository.js';
+import { bindActor, visibleState } from '../access.mjs';
+import { connectDatabase } from '../db.mjs';
+import { JsonStore } from '../store.mjs';
+import { screenComment, filterVersion } from '../src/content-filter.js';
+
+const values = new Map();
+const storage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value) };
+const repo = new domain.LocalRepository(storage);
+await repo.saveCanteen({ actorId: 'demo-admin', campusId: 'campus-a', name: '测试食堂' });
+const canteenId = (await repo.snapshot()).canteens[0].id;
+await repo.saveShop({ actorId: 'demo-admin', canteenId, name: '测试面馆' });
+const shopId = (await repo.snapshot()).shops[0].id;
+await repo.submitPost({ actorId: 'demo-author', shopId, title: '今天的面', body: '欢迎分享想法' });
+const postId = (await repo.snapshot()).posts[0].id;
+await repo.addComment('post', postId, 'demo-viewer', '很好吃 <img src=x>');
+await repo.addComment('post', postId, 'demo-author', '自己的评论');
+await repo.addComment('shop', shopId, 'demo-viewer', '店铺评论');
+await repo.submitContribution({ actorId: 'demo-author', campusId: 'campus-a', canteenId, shopId, type: 'field-update', targetKind: 'shop', changes: { location: '一楼' } });
+const contributionId = (await repo.snapshot()).contributions[0].id;
+await repo.reviewContribution(contributionId, 'fixed', '审核通过', 'demo-admin');
+await repo.castRecommendationVote(shopId, 'demo-author');
+const messages = () => repo.snapshot().then(data => domain.userMessages(data, 'demo-author'));
+let items = await messages();
+assert.equal(items.filter(item => item.category === 'system').length, 2);
+assert.equal(items.filter(item => item.category === 'applications').length, 1);
+assert.equal(items.filter(item => item.category === 'replies').length, 1);
+const reply = items.find(item => item.category === 'replies');
+await assert.rejects(repo.markMessageRead(reply.id, 'demo-viewer'), /无权访问/);
+await repo.markMessageRead(reply.id, 'demo-author');
+assert.equal((await messages()).find(item => item.id === reply.id).unread, false);
+assert.equal(await repo.markAllMessagesRead('demo-author'), 3);
+assert.equal(await repo.markAllMessagesRead('demo-author'), 0);
+assert.ok((await messages()).every(item => !item.unread));
+await repo.addComment('post', postId, 'demo-viewer', '新的回复');
+assert.equal((await messages()).filter(item => item.unread).length, 1);
+await repo.submitContribution({ actorId: 'demo-author', campusId: 'campus-a', canteenId, shopId, type: 'field-update', targetKind: 'shop', changes: { location: '二楼' } });
+const nextId = (await repo.snapshot()).contributions[0].id;
+await repo.reviewContribution(nextId, 'provisional', '', 'demo-admin');
+await repo.markAllMessagesRead('demo-author');
+await repo.fixProvisional(nextId, 'demo-admin');
+assert.equal((await messages()).filter(item => item.category === 'applications' && item.unread).length, 1);
+const data = await repo.snapshot();
+const hidden = structuredClone(data);
+hidden.comments.forEach(item => item.status = 'hidden');
+assert.equal(domain.userMessages(hidden, 'demo-author').filter(item => item.category === 'replies').length, 0);
+assert.equal(domain.userMessages(data, null).length, 0);
+assert.equal(visibleState(data, { id: 'demo-viewer', role: 'member' }).messageReadReceipts.length, 0);
+assert.deepEqual(bindActor('markMessageRead', [reply.id, 'demo-author'], { id: 'demo-viewer', role: 'member' }), [reply.id, 'demo-viewer']);
+assert.deepEqual(bindActor('markAllMessagesRead', ['demo-author'], { id: 'demo-viewer', role: 'member' }), ['demo-viewer']);
+
+// Exercise the real disk adapter and reload, without touching application data.
+const directory = await mkdtemp(join(tmpdir(), 'canteen-messages-'));
+try {
+  const store = new JsonStore(directory);
+  await store.transaction(value => { value.state = JSON.stringify(data); });
+  let db = await connectDatabase({ DATA_DIR: directory });
+  const actor = domain.demoUsers.find(item => item.id === 'demo-author');
+  await db.action('markAllMessagesRead', [actor.id], actor);
+  await db.close();
+  db = await connectDatabase({ DATA_DIR: directory });
+  assert.ok(domain.userMessages(await db.snapshot(), actor.id).every(item => !item.unread));
+  await db.close();
+} finally { await rm(directory, { recursive: true, force: true }); }
+
+const dom = new JSDOM('<div id="app"></div>', { url: 'http://127.0.0.1:4185/', runScripts: 'outside-only' });
+const { window } = dom;
+window.scrollTo = () => {};
+const actor = domain.demoUsers.find(item => item.id === 'demo-author');
+const uiRepo = { mode: async () => 'file', authSession: async () => ({ user: actor }), snapshot: () => repo.snapshot(), markMessageRead: (...args) => repo.markMessageRead(...args), markAllMessagesRead: (...args) => repo.markAllMessagesRead(...args) };
+window.__deps = { ...domain, createRepository: () => uiRepo, screenComment, filterVersion, sanitizeRichHtml: value => value, plainTextFromRichHtml: value => value, imageAsDataUrl: async () => '' };
+const source = (await readFile(new URL('../src/app.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '');
+const settle = async () => { await new Promise(setImmediate); await new Promise(setImmediate); };
+const click = async selector => { const element = window.document.querySelector(selector); assert.ok(element, selector); element.click(); await settle(); };
+try {
+  window.eval('const { createRepository, demoUsers, canReview, recommendationLedger, recommendationSummary, userMessages, screenComment, filterVersion, sanitizeRichHtml, plainTextFromRichHtml, imageAsDataUrl } = window.__deps;\n' + source);
+  await settle();
+  await click('[data-action="toggle-profile"]');
+  await click('[data-tab="messages"]');
+  assert.equal(window.document.querySelectorAll('[role="tab"]').length, 3);
+  await click('[data-category="system"]');
+  assert.match(window.document.querySelector('.profile-message-list').textContent, /获得额外推荐票|推荐票已投给/);
+  await click('[data-category="replies"]');
+  assert.equal(window.document.querySelector('.profile-message-list img'), null, 'reply HTML is escaped');
+  await click('[data-action="mark-all-messages-read"]');
+  assert.equal(window.document.querySelectorAll('.message-card.unread').length, 0);
+  await click('[data-action="open-message-post"]');
+  assert.equal(window.document.querySelector('.profile-sidebar'), null);
+  assert.ok(window.location.pathname.includes(postId));
+  console.log('message-center: categories, history, receipts, permissions, persistence and UI flows passed');
+} finally { window.close(); }

@@ -1,0 +1,20 @@
+{
+  "checkedAt": "2026-10-18T13:51:53.610Z",
+  "source": "D:/WorkBuddy/resources/app.asar -> main/server.js",
+  "method": "只读检查实际安装代码；隔离VM运行原选择/目标函数，文件读取及云服务由已核对的本地元数据替身提供；未调用部署/云服务",
+  "appId": "wbapp_mkles2WxzoQkUIOuWS1250",
+  "workspaceManifest": "D:/code/agent/workbuddy-bridge/.workbuddy/applications.yaml",
+  "selection": {
+    "kind": "selected",
+    "appId": "wbapp_mkles2WxzoQkUIOuWS1250"
+  },
+  "destination": {
+    "kind": "existing-application",
+    "appId": "wbapp_mkles2WxzoQkUIOuWS1250",
+    "sandboxId": "6c1cfd6082b34593887da1e6ca3e3b2d",
+    "conversationId": "2110008461911973888",
+    "originalPath": "D:\\code\\食堂评价"
+  },
+  "extraction": "tar -xzf in /workspace; does not clear existing files in this function",
+  "limitations": "未在云端实际发布；复用连接仍可能失败/漂移，发布执行前后必须核对沙箱身份；不能将隔离VM当成真实上线验收"
+}

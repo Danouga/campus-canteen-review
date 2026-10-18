@@ -1,4 +1,4 @@
-import { createRepository, demoUsers, canReview, recommendationLedger, recommendationSummary } from './repository.js';
+import { createRepository, demoUsers, canReview, recommendationLedger, recommendationSummary, userMessages } from './repository.js';
 import { screenComment, filterVersion } from './content-filter.js';
 import { sanitizeRichHtml, plainTextFromRichHtml } from './rich-text.js';
 import { imageAsDataUrl } from './image-compression.js';
@@ -6,7 +6,7 @@ import { imageAsDataUrl } from './image-compression.js';
 const repo = createRepository();
 const root = document.querySelector('#app');
 const savedActorId = localStorage.getItem('canteen-guide-demo-actor');
-const state = { user: null, authOpen: false, authNotice: '', authMode: 'login', authDraft: { email: '', name: '', password: '', confirmPassword: '', code: '', challengeId: '', sentEmail: '', sentPurpose: '', resendAt: 0 }, authBusy: false, data: null, actorId: demoUsers.some((user) => user.id === savedActorId) ? savedActorId : 'demo-author', campusId: 'campus-a', view: 'home', canteenId: null, shopId: null, dishId: null, postId: null, postFilters: { campusId: '', canteenId: '', shopId: '', sort: 'newest' }, moderationFilters: { kind: 'all', status: 'all', sort: 'newest', query: '', limit: 12 }, profileLedgerLimit: { rewards: 20, votes: 20 }, query: '', modal: null, lightbox: null, commentSort: 'newest', adminCanteenId: null, profileOpen: false, profileTab: 'overview', notice: '', storageMode: 'local' };
+const state = { user: null, authOpen: false, authNotice: '', authMode: 'login', authDraft: { email: '', name: '', password: '', confirmPassword: '', code: '', challengeId: '', sentEmail: '', sentPurpose: '', resendAt: 0 }, authBusy: false, data: null, actorId: demoUsers.some((user) => user.id === savedActorId) ? savedActorId : 'demo-author', campusId: 'campus-a', view: 'home', canteenId: null, shopId: null, dishId: null, postId: null, postFilters: { campusId: '', canteenId: '', shopId: '', sort: 'newest' }, moderationFilters: { kind: 'all', status: 'all', sort: 'newest', query: '', limit: 12 }, messageCategory: 'applications', messageLimit: 20, query: '', modal: null, lightbox: null, commentSort: 'newest', adminCanteenId: null, profileOpen: false, profileTab: 'overview', notice: '', storageMode: 'local' };
 
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 const thumbnailUrl = (url, width = 320) => /^\/api\/media\/[a-f0-9]{64}$/.test(url || '') ? `${url}?w=${width}` : url;
@@ -19,7 +19,7 @@ const activeShops = () => state.data.shops.filter((item) => item.status === 'act
 const canteensHere = () => activeCanteens().filter((item) => item.campusId === state.campusId);
 const pendingCount = () => state.data.contributions.filter((item) => item.status === 'pending').length;
 const actor = () => state.storageMode === 'mysql' ? state.user : demoUsers.find((user) => user.id === state.actorId);
-const unreadCount = () => state.data.contributions.filter((item) => item.ownerId === state.actorId && item.status !== 'pending' && !item.notificationReadAt).length;
+const unreadCount = () => userMessages(state.data, state.actorId).filter(item => item.unread).length;
 const postPreview = (post) => String(post.body || '').slice(0, 105);
 const postMarkup = (post) => post.contentHtml ? sanitizeRichHtml(post.contentHtml) : `<p>${escapeHtml(post.body || '').replace(/\n/g, '<br>')}</p>${post.photo ? `<img src="${escapeHtml(post.photo)}" alt="帖子图片" loading="lazy" decoding="async" />` : ''}`;
 const storageName = () => state.storageMode === 'mysql' ? '服务器数据' : '当前浏览器';
@@ -259,10 +259,16 @@ function contributeView() {
 }
 
 function profileMessages() {
-  const entries = state.data.contributions.filter((entry) => entry.ownerId === state.actorId);
-  const unread = entries.filter((entry) => entry.status !== 'pending' && !entry.notificationReadAt).length;
-  const labels = { pending: '等待审核', provisional: '暂示中', fixed: '已固定收录', contested: '固定资料待复核', revoked: '已撤销收录', rejected: '未通过', expired: '暂示已结束' };
-  return `<div class="profile-section-intro profile-message-head"><div><h3>我的消息</h3><p>共建申请的审核结果会显示在这里。</p></div>${unread ? `<button type="button" class="profile-mark-all" data-action="mark-all-messages-read">全部标为已读（${unread}）</button>` : ''}</div><div class="profile-message-list">${entries.length ? entries.map((entry) => `<article class="message-card ${entry.status !== 'pending' && !entry.notificationReadAt ? 'unread' : ''}"><div><span class="status-pill">${labels[entry.status] || entry.status}</span><small>${dateLabel(entry.reviewedAt || entry.submittedAt)}</small></div><h2>${escapeHtml(entry.title)}</h2><p>${entry.status === 'pending' ? '申请已送达管理员工作台。' : entry.reviewNote ? escapeHtml(entry.reviewNote) : '管理员已处理这条申请。'}</p>${entry.status !== 'pending' && !entry.notificationReadAt ? `<button class="text-action" data-action="mark-message-read" data-id="${entry.id}">标为已读 ${icon('check', 15)}</button>` : ''}</article>`).join('') : '<div class="profile-empty">还没有共建申请。提交后可在这里查看审核消息。</div>'}</div>`;
+  const messages = userMessages(state.data, state.actorId);
+  const unread = messages.filter(item => item.unread).length;
+  const categories = { system: '系统消息', applications: '我的消息', replies: '回复我的' };
+  const descriptions = { system: '推荐票奖励来源、投票消耗与积分记录。每日基础票自动更新，不另生成领取消息。', applications: '查看共建申请进度与审核结果。', replies: '其他用户对你发布的美食贴的评论。' };
+  const entries = messages.filter(item => item.category === state.messageCategory);
+  const tabs = Object.entries(categories).map(([key, label]) => {
+    const count = messages.filter(item => item.category === key && item.unread).length;
+    return `<button type="button" role="tab" aria-selected="${state.messageCategory === key}" class="message-category ${state.messageCategory === key ? 'active' : ''}" data-action="message-category" data-category="${key}">${label}${count ? `<span class="nav-count">${count}</span>` : ''}</button>`;
+  }).join('');
+  return `<div class="profile-section-intro profile-message-head"><div><h3>消息中心</h3><p>审核、系统通知和帖子评论，分别查看。</p></div>${unread ? `<button type="button" class="profile-mark-all" data-action="mark-all-messages-read">全部标为已读（${unread}）</button>` : ''}</div><div class="message-categories" role="tablist" aria-label="消息分类">${tabs}</div><p class="message-category-description">${descriptions[state.messageCategory]}</p><div class="profile-message-list">${entries.length ? entries.slice(0, state.messageLimit).map(entry => `<article class="message-card ${entry.unread ? 'unread' : ''}"><div><span class="status-pill">${escapeHtml(entry.label || categories[entry.category])}</span><small>${fullDateLabel(entry.createdAt)}</small></div><h2>${escapeHtml(entry.title)}</h2>${entry.context ? `<small class="message-context">《${escapeHtml(entry.context)}》</small>` : ''}<p>${escapeHtml(entry.body)}</p><div class="message-actions">${entry.postId ? `<button class="text-action" data-action="open-message-post" data-id="${escapeHtml(entry.id)}" data-post-id="${escapeHtml(entry.postId)}">查看帖子 ${icon('arrow', 15)}</button>` : ''}${entry.unread ? `<button class="text-action" data-action="mark-message-read" data-id="${escapeHtml(entry.id)}">标为已读 ${icon('check', 15)}</button>` : ''}</div></article>`).join('') : '<div class="profile-empty">这个分类暂时没有消息。</div>'}${entries.length > state.messageLimit ? '<button class="profile-ledger-more" data-action="messages-more">查看更多消息</button>' : ''}</div>`;
 }
 
 function profilePublications() {
@@ -273,26 +279,8 @@ function profilePublications() {
 }
 
 function profileVoteLedger() {
-  const ledger = recommendationLedger(state.data, state.actorId);
   const summary = recommendationSummary(state.data, state.actorId);
-  const rewardLabel = (reward) => {
-    if (!reward) return '历史额外票（来源未关联）';
-    const item = reward.sourceKind === 'comment' ? state.data.comments.find((entry) => entry.id === reward.sourceId) : reward.sourceKind === 'post' ? state.data.posts.find((entry) => entry.id === reward.sourceId) : state.data.contributions.find((entry) => entry.id === reward.sourceId);
-    const kind = { comment: '评论获赞', post: '美食贴获赞', contribution: '共建固定' }[reward.sourceKind] || '额外票奖励';
-    const title = item?.title || item?.body || '原内容已移除';
-    return `${kind} · ${title.slice(0, 42)}`;
-  };
-  const rewards = [...ledger.rewards].reverse();
-  const votes = [...ledger.votes].reverse();
-  const rewardByKey = new Map(ledger.rewards.map((entry) => [entry.key, entry]));
-  const rewardRows = rewards.slice(0, state.profileLedgerLimit.rewards).map((entry) => `<li><div><b>${escapeHtml(rewardLabel(entry))}</b><small>${fullDateLabel(entry.createdAt)}${entry.inferred ? ' · 旧记录消耗对应关系为推定' : ''}</small></div><span class="${entry.used ? 'ledger-used' : 'ledger-credit'}">${entry.used ? '已使用' : '+1 张'}</span></li>`).join('') || '<li class="ledger-empty">暂无额外票奖励。</li>';
-  const voteRows = votes.slice(0, state.profileLedgerLimit.votes).map((entry) => {
-    const shop = state.data.shops.find((item) => item.id === entry.shopId);
-    const reward = rewardByKey.get(entry.appliedRewardKey);
-    const source = entry.source === 'base' ? '每日基础票' : rewardLabel(reward);
-    return `<li><div><b>投给 ${escapeHtml(shop?.name || '已下架店铺')}</b><small>${fullDateLabel(entry.createdAt)} · ${escapeHtml(source)}${entry.sourceInferred ? '（旧记录推定）' : ''}</small></div><span class="ledger-debit">−1 张</span></li>`;
-  }).join('') || '<li class="ledger-empty">还没有投出推荐票。</li>';
-  return `<div class="profile-ledger"><button class="profile-ledger-back" data-action="profile-tab" data-tab="overview">${icon('arrow', 15)} 返回概览</button><div class="profile-section-intro"><h3>推荐票明细</h3><p>今天的基础票每日更新；额外票按奖励记录保留。旧投票若未记录具体奖励来源，会按发放顺序推定。</p></div><div class="profile-ledger-summary"><div><strong>${summary.available}</strong><span>当前可投</span></div><div><strong>${summary.baseRemaining}</strong><span>今日基础票</span></div><div><strong>${summary.bonus}</strong><span>额外票</span></div></div><section><h4>额外票来源 <span>${rewards.length}</span></h4><ul>${rewardRows}</ul>${rewards.length > state.profileLedgerLimit.rewards ? '<button class="profile-ledger-more" data-action="ledger-more" data-kind="rewards">查看更多来源</button>' : ''}</section><section><h4>投票消耗 <span>${votes.length}</span></h4><ul>${voteRows}</ul>${votes.length > state.profileLedgerLimit.votes ? '<button class="profile-ledger-more" data-action="ledger-more" data-kind="votes">查看更多记录</button>' : ''}</section></div>`;
+  return `<div class="profile-ledger"><button class="profile-ledger-back" data-action="profile-tab" data-tab="overview">${icon('arrow', 15)} 返回概览</button><div class="profile-section-intro"><h3>我的推荐票</h3><p>基础票每日更新，额外票可以保留。奖励来源与投票消耗记录已移至系统消息。</p></div><div class="profile-ledger-summary"><div><strong>${summary.available}</strong><span>当前可投</span></div><div><strong>${summary.baseRemaining}</strong><span>今日基础票</span></div><div><strong>${summary.bonus}</strong><span>额外票</span></div></div><button class="button outline small" data-action="message-category" data-category="system">查看系统消息 ${icon('arrow', 15)}</button></div>`;
 }
 
 function profileSidebar() {
@@ -302,7 +290,7 @@ function profileSidebar() {
   const votes = recommendationSummary(state.data, state.actorId);
   const points = recommendationLedger(state.data, state.actorId).points;
   const tab = (name, label) => `<button class="profile-tab ${state.profileTab === name || name === 'overview' && state.profileTab === 'vote-ledger' ? 'active' : ''}" data-action="profile-tab" data-tab="${name}">${label}${name === 'messages' && count ? `<span class="nav-count">${count}</span>` : ''}</button>`;
-  return `<div class="profile-backdrop" data-action="close-profile"><aside class="profile-sidebar" role="dialog" aria-modal="true" aria-label="用户信息" data-stop><div class="profile-top"><div><span class="section-kicker">MY SPACE</span><h2>用户信息</h2></div><button class="icon-button" data-action="close-profile" aria-label="关闭用户信息">${icon('close', 20)}</button></div><div class="profile-identity"><span class="profile-avatar">${escapeHtml(actor()?.name?.slice(0, 1) || '用')}</span><div><b>${escapeHtml(actor()?.name || (state.storageMode === 'mysql' ? '登录' : '用户'))}</b><small>${state.storageMode === 'mysql' ? escapeHtml(state.user.email) : '演示身份 · 本地预览'}</small></div></div>${state.storageMode === 'mysql' ? '<div class="account-actions"><button class="quiet-button" data-action="account-mode" data-mode="change-password">修改密码</button><button class="quiet-button" data-action="logout">退出登录</button></div>' : `<label class="profile-switch">切换演示身份<select id="demo-actor" aria-label="切换演示身份">${demoUsers.map((user) => `<option value="${user.id}" ${user.id === state.actorId ? 'selected' : ''}>${user.name}</option>`).join('')}</select></label>`}<nav class="profile-tabs" aria-label="用户信息栏目">${tab('overview', '概览')}${tab('messages', '我的消息')}${tab('publications', '我的发布')}</nav><div class="profile-body">${state.profileTab === 'messages' ? profileMessages() : state.profileTab === 'publications' ? profilePublications() : state.profileTab === 'vote-ledger' ? profileVoteLedger() : `<div class="profile-section-intro"><h3>你好，${escapeHtml(actor()?.name || (state.storageMode === 'mysql' ? '登录' : '用户'))}</h3><p>共建记录和发布内容会逐步汇集到这里。</p></div><button class="profile-vote-card" data-action="profile-tab" data-tab="vote-ledger" aria-label="查看推荐票来源与消耗明细"><span>我的推荐票 ${icon('chevron', 16)}</span><strong>${votes.available}</strong><small>今日基础票 ${votes.baseRemaining} 张 · 可保留额外票 ${votes.bonus} 张</small></button><div class="profile-points-card"><span>我的积分 <small>试行</small></span><strong>${points}</strong><p>暂按每投 1 张推荐票获得 1 积分计算。兑换校园周边或学习用品等功能尚未开放。</p></div><button class="button outline small profile-ranking-link" data-view="ranking">查看本周推荐榜 ${icon('arrow', 16)}</button>`}</div></aside></div>`;
+  return `<div class="profile-backdrop" data-action="close-profile"><aside class="profile-sidebar" role="dialog" aria-modal="true" aria-label="用户信息" data-stop><div class="profile-top"><div><span class="section-kicker">MY SPACE</span><h2>用户信息</h2></div><button class="icon-button" data-action="close-profile" aria-label="关闭用户信息">${icon('close', 20)}</button></div><div class="profile-identity"><span class="profile-avatar">${escapeHtml(actor()?.name?.slice(0, 1) || '用')}</span><div><b>${escapeHtml(actor()?.name || (state.storageMode === 'mysql' ? '登录' : '用户'))}</b><small>${state.storageMode === 'mysql' ? escapeHtml(state.user.email) : '演示身份 · 本地预览'}</small></div></div>${state.storageMode === 'mysql' ? '<div class="account-actions"><button class="quiet-button" data-action="account-mode" data-mode="change-password">修改密码</button><button class="quiet-button" data-action="logout">退出登录</button></div>' : `<label class="profile-switch">切换演示身份<select id="demo-actor" aria-label="切换演示身份">${demoUsers.map((user) => `<option value="${user.id}" ${user.id === state.actorId ? 'selected' : ''}>${user.name}</option>`).join('')}</select></label>`}<nav class="profile-tabs" aria-label="用户信息栏目">${tab('overview', '概览')}${tab('messages', '消息中心')}${tab('publications', '我的发布')}</nav><div class="profile-body">${state.profileTab === 'messages' ? profileMessages() : state.profileTab === 'publications' ? profilePublications() : state.profileTab === 'vote-ledger' ? profileVoteLedger() : `<div class="profile-section-intro"><h3>你好，${escapeHtml(actor()?.name || (state.storageMode === 'mysql' ? '登录' : '用户'))}</h3><p>共建记录和发布内容会逐步汇集到这里。</p></div><button class="profile-vote-card" data-action="profile-tab" data-tab="vote-ledger" aria-label="查看我的推荐票"><span>我的推荐票 ${icon('chevron', 16)}</span><strong>${votes.available}</strong><small>今日基础票 ${votes.baseRemaining} 张 · 可保留额外票 ${votes.bonus} 张</small></button><div class="profile-points-card"><span>我的积分 <small>试行</small></span><strong>${points}</strong><p>暂按每投 1 张推荐票获得 1 积分计算。兑换校园周边或学习用品等功能尚未开放。</p></div><button class="button outline small profile-ranking-link" data-view="ranking">查看本周推荐榜 ${icon('arrow', 16)}</button>`}</div></aside></div>`;
 }
 
 function rulesView() {
@@ -359,7 +347,7 @@ function postModal() {
   const shops = activeShops();
   const selected = shops.find((shop) => shop.id === state.modal?.selectedShopId);
   const selectedName = selected ? `${activeCanteens().find((canteen) => canteen.id === selected.canteenId)?.name || '食堂'} · ${selected.name}` : '';
-  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal post-editor-modal" role="dialog" aria-modal="true" aria-label="发美食贴" data-stop><div class="modal-head"><div><span class="section-kicker">FOOD STORIES</span><h2>发美食贴</h2><p>选好店铺，再分享你的发现。</p></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div>${shops.length ? `<form id="post-form" class="modal-form"><div class="shop-picker"><label for="post-shop-search">关联店铺</label><div class="shop-picker-input">${icon('search', 18)}<input id="post-shop-search" type="search" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="post-shop-options" placeholder="搜索店铺或食堂" value="${escapeHtml(selectedName)}" /></div><input id="post-shop-id" name="shopId" type="hidden" value="${escapeHtml(selected?.id || '')}" /><div id="post-shop-options" class="shop-picker-options" role="listbox" hidden></div><small id="post-shop-hint">输入名称查找，点击结果关联店铺</small></div><label>标题<input name="title" maxlength="80" required placeholder="这餐有什么值得分享？" /></label><div class="rich-editor-wrap"><span class="editor-label">正文</span><div class="editor-toolbar" role="toolbar" aria-label="文字格式"><button type="button" data-action="format-editor" data-command="bold" aria-label="加粗"><b>B</b></button><button type="button" data-action="format-editor" data-command="italic" aria-label="斜体"><i>I</i></button><button type="button" data-action="format-editor" data-command="underline" aria-label="下划线"><u>U</u></button><button type="button" data-action="format-editor" data-command="heading" aria-label="小标题">H2</button><button type="button" data-action="format-editor" data-command="list" aria-label="无序列表">☷</button><label class="editor-image-control">${icon('image', 17)} 添加图片<input id="post-inline-image" type="file" accept="image/png,image/jpeg,image/webp" /></label></div><label class="post-image-description">下一张图片的描述（选填）<input id="post-image-description" maxlength="200" placeholder="填写后再点击添加图片" /></label><div id="post-editor" class="rich-editor" contenteditable="true" role="textbox" aria-label="帖子正文" aria-multiline="true" data-placeholder="写下味道、感受或你的发现…"></div><small>支持加粗、斜体、小标题、列表和正文插图；最多 3 张，大图自动压缩到 900KB 内。</small></div><div class="form-identity">以 <b>${escapeHtml(actor()?.name || '')}</b> 身份发布</div><div class="form-notice">${icon('shield', 17)} 帖子经过演示屏蔽词筛选，内容保存在${storageName()}。</div><button class="button primary full" type="submit">发布美食贴</button></form>` : `<div class="post-empty-note">还没有已收录店铺。先到「一起共建」申请添加店铺，管理员确认后即可关联发帖。</div>`}</div></div>`;
+  return `<div class="modal-backdrop" data-action="close-modal"><div class="modal post-editor-modal" role="dialog" aria-modal="true" aria-label="发美食贴" data-stop><div class="modal-head"><div><span class="section-kicker">FOOD STORIES</span><h2>发美食贴</h2><p>选好店铺，再分享你的发现。</p></div><button class="icon-button" data-action="close-modal" aria-label="关闭">${icon('close', 20)}</button></div>${shops.length ? `<form id="post-form" class="modal-form"><div class="shop-picker"><label for="post-shop-search">关联店铺</label><div class="shop-picker-input">${icon('search', 18)}<input id="post-shop-search" type="search" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="post-shop-options" placeholder="搜索店铺或食堂" value="${escapeHtml(selectedName)}" /></div><input id="post-shop-id" name="shopId" type="hidden" value="${escapeHtml(selected?.id || '')}" /><div id="post-shop-options" class="shop-picker-options" role="listbox" hidden></div><small id="post-shop-hint">输入名称查找，点击结果关联店铺</small></div><label>标题<input name="title" maxlength="80" required placeholder="这餐有什么值得分享？" /></label><div class="rich-editor-wrap"><span class="editor-label">正文</span><div class="editor-toolbar" role="toolbar" aria-label="文字格式"><button type="button" data-action="format-editor" data-command="bold" aria-label="加粗"><b>B</b></button><button type="button" data-action="format-editor" data-command="italic" aria-label="斜体"><i>I</i></button><button type="button" data-action="format-editor" data-command="underline" aria-label="下划线"><u>U</u></button><button type="button" data-action="format-editor" data-command="heading" aria-label="小标题">H2</button><button type="button" data-action="format-editor" data-command="list" aria-label="无序列表">☷</button><label class="editor-image-control">${icon('image', 17)} 添加图片<input id="post-inline-image" type="file" accept="image/png,image/jpeg,image/webp" /></label></div><div id="post-editor" class="rich-editor" contenteditable="true" role="textbox" aria-label="帖子正文" aria-multiline="true" data-placeholder="写下味道、感受或你的发现…"></div><small>支持加粗、斜体、小标题、列表和正文插图；最多 3 张，大图自动压缩到 900KB 内。</small></div><div class="form-identity">以 <b>${escapeHtml(actor()?.name || '')}</b> 身份发布</div><div class="form-notice">${icon('shield', 17)} 帖子经过演示屏蔽词筛选，内容保存在${storageName()}。</div><button class="button primary full" type="submit">发布美食贴</button></form>` : `<div class="post-empty-note">还没有已收录店铺。先到「一起共建」申请添加店铺，管理员确认后即可关联发帖。</div>`}</div></div>`;
 }
 
 function fixedPanel(items) {
@@ -566,8 +554,8 @@ function galleryModal() {
 
 function lightbox() {
   if (!state.lightbox) return '';
-  const { url, caption, category, uploader, description } = state.lightbox;
-  return `<div class="lightbox-backdrop" data-action="close-lightbox"><div class="lightbox-dialog" role="dialog" aria-modal="true" aria-label="放大查看图片" data-stop><button class="lightbox-close" data-action="close-lightbox" aria-label="关闭图片">${icon('close', 22)}</button><div class="lightbox-image-stack"><img class="lightbox-preview" src="${escapeHtml(thumbnailUrl(url, 640))}" alt="" /><img class="lightbox-full" src="${escapeHtml(url)}" alt="${escapeHtml(caption)}" /></div><div class="lightbox-caption"><strong>${escapeHtml(category || caption || '图片')}</strong><span>${escapeHtml(uploader)} 想说：${escapeHtml(description || '未填写描述')}</span></div></div></div>`;
+  const { url, caption, category, uploader, description, postImage } = state.lightbox;
+  return `<div class="lightbox-backdrop" data-action="close-lightbox"><div class="lightbox-dialog" role="dialog" aria-modal="true" aria-label="放大查看图片" data-stop><button class="lightbox-close" data-action="close-lightbox" aria-label="关闭图片">${icon('close', 22)}</button><div class="lightbox-image-stack"><img class="lightbox-preview" src="${escapeHtml(thumbnailUrl(url, 640))}" alt="" /><img class="lightbox-full" src="${escapeHtml(url)}" alt="${escapeHtml(caption)}" /></div><div class="lightbox-caption"><strong>${escapeHtml(category || caption || '图片')}</strong>${postImage ? '' : `<span>${escapeHtml(uploader)} 想说：${escapeHtml(description || '未填写描述')}</span>`}</div></div></div>`;
 }
 
 let choiceCounter = 0;
@@ -714,8 +702,7 @@ root.addEventListener('click', async (event) => {
   backdropGesture = null;
   if (!event.target.closest('.choice-select')) for (const wrapper of root.querySelectorAll('.choice-select.open')) { wrapper.classList.remove('open'); wrapper.querySelector('.choice-select-options').hidden = true; wrapper.querySelector('.choice-select-trigger').setAttribute('aria-expanded', 'false'); }
   if (event.target.matches('.rich-content img')) {
-    const post = state.data.posts.find((entry) => entry.id === state.postId);
-    state.lightbox = { url: event.target.src, caption: event.target.alt || '帖子图片', category: '美食贴图片', description: event.target.dataset.photoDescription || '', uploader: uploaderName(post?.ownerId, post?.author) }; render(); return;
+    state.lightbox = { url: event.target.src, caption: '美食贴图片', category: '美食贴图片', postImage: true }; render(); return;
   }
   const target = event.target.closest('[data-action], [data-view], [data-campus], [data-canteen], [data-shop], [data-dish], [data-post]');
   if (!target) return;
@@ -744,8 +731,9 @@ root.addEventListener('click', async (event) => {
   if (command === 'toggle-profile') { if (state.storageMode === 'mysql' && !state.user) openAccountDialog('login'); else state.profileOpen = !state.profileOpen; state.profileTab = 'overview'; render(); return; }
   if (command === 'close-account') { closeAccountDialog(); render(); return; }
   if (command === 'close-profile') { state.profileOpen = false; render(); return; }
-  if (command === 'profile-tab') { state.profileTab = target.dataset.tab; render(); return; }
-  if (command === 'ledger-more') { state.profileLedgerLimit[target.dataset.kind] += 20; render(); return; }
+  if (command === 'profile-tab') { state.profileTab = target.dataset.tab; if (state.profileTab === 'messages') { try { await refresh(); } catch (error) { showNotice(error.message); } } else render(); return; }
+  if (command === 'message-category') { state.profileTab = 'messages'; state.messageCategory = target.dataset.category; state.messageLimit = 20; render(); return; }
+  if (command === 'messages-more') { state.messageLimit += 20; render(); return; }
   if (command === 'close-modal') { if (event.target.closest('[data-stop]') && target.classList.contains('modal-backdrop')) return; state.modal = null; render(); return; }
   if (command === 'dismiss-notice') { state.notice = ''; root.querySelector('.toast')?.remove(); return; }
   if (command === 'go-contribute') { go('contribute'); return; }
@@ -781,8 +769,9 @@ root.addEventListener('click', async (event) => {
     if (command === 'restore-entry') { await repo.restoreEntry(target.dataset.kind, target.dataset.id, state.actorId); await refresh(); showNotice('资料已恢复。'); return; }
     if (command === 'fix-provisional') { await repo.fixProvisional(target.dataset.id, state.actorId); await refresh(); showNotice('已固定收录。'); return; }
     if (command === 'revoke-provisional') { await repo.revokeProvisional(target.dataset.id, state.actorId); await refresh(); showNotice('暂示已撤销。'); return; }
-    if (command === 'mark-message-read') { await repo.markReviewMessageRead(target.dataset.id, state.actorId); await refresh(); return; }
-    if (command === 'mark-all-messages-read') { await repo.markAllReviewMessagesRead(state.actorId); await refresh(); return; }
+    if (command === 'open-message-post') { await repo.markMessageRead(target.dataset.id, state.actorId); state.data = await repo.snapshot(); state.postId = target.dataset.postId; state.profileOpen = false; go('post-detail'); return; }
+    if (command === 'mark-message-read') { await repo.markMessageRead(target.dataset.id, state.actorId); await refresh(); return; }
+    if (command === 'mark-all-messages-read') { await repo.markAllMessagesRead(state.actorId); await refresh(); return; }
     if (command === 'delete-own') { await repo.deleteOwnContent(target.dataset.kind, target.dataset.id, state.actorId); state.modal = null; if (target.dataset.kind === 'post') { state.view = 'posts'; history.pushState({}, '', routePath()); } await refresh(); showNotice('已删除自己发布的内容。'); return; }
     if (command === 'remove-canteen-photo') { await repo.removeCanteenPhoto(target.dataset.canteenId, target.dataset.id, state.actorId); state.modal = { kind: 'canteen-photos', id: target.dataset.canteenId }; await refresh(); showNotice('照片已下架。'); return; }
     if (command === 'confirm-operation') {
@@ -851,12 +840,7 @@ root.addEventListener('change', async (event) => {
       if (!file) return;
       if (editor.querySelectorAll('img').length >= 3) throw new Error('每篇最多添加 3 张图片。');
       const url = await imageAsDataUrl(file);
-      const descriptionInput = root.querySelector('#post-image-description');
-      const description = descriptionInput.value.trim();
-      const screening = description ? screenComment(description) : { allowed: true };
-      if (!screening.allowed) throw new Error(screening.reason);
-      editor.insertAdjacentHTML('beforeend', `<p><img src="${url}" alt="帖子图片" data-photo-description="${escapeHtml(description)}" /></p>`);
-      descriptionInput.value = '';
+      editor.insertAdjacentHTML('beforeend', `<p><img src="${url}" alt="帖子图片" /></p>`);
       hint.textContent = file.size > 900_000 ? '图片已压缩并加入正文末尾。' : '图片已添加到正文末尾，可继续编辑文字。';
       event.target.value = '';
       editor.focus();

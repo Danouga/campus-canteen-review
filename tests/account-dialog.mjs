@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
-import { initialState, demoUsers, canReview, recommendationLedger, recommendationSummary } from '../src/repository.js';
+import { initialState, demoUsers, canReview, recommendationLedger, recommendationSummary, userMessages } from '../src/repository.js';
 import { screenComment, filterVersion } from '../src/content-filter.js';
 
 const dom = new JSDOM('<!doctype html><div id="app"></div>', { url: 'http://127.0.0.1:4185/', runScripts: 'outside-only' });
@@ -36,7 +36,7 @@ const repo = {
     throw new Error('Unexpected request');
   }
 };
-window.__deps = { createRepository: () => repo, demoUsers, canReview, recommendationLedger, recommendationSummary, screenComment, filterVersion,
+window.__deps = { createRepository: () => repo, demoUsers, canReview, recommendationLedger, recommendationSummary, userMessages, screenComment, filterVersion,
   sanitizeRichHtml: value => value, plainTextFromRichHtml: value => value, imageAsDataUrl: async () => '' };
 const source = (await readFile(new URL('../src/app.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '');
 const settle = async () => { await new Promise(setImmediate); await new Promise(setImmediate); };
@@ -49,7 +49,7 @@ function fill(name, value) {
 }
 function submit() { query('#email-login-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); }
 try {
-  window.eval('const { createRepository, demoUsers, canReview, recommendationLedger, recommendationSummary, screenComment, filterVersion, sanitizeRichHtml, plainTextFromRichHtml, imageAsDataUrl } = window.__deps;\n' + source);
+  window.eval('const { createRepository, demoUsers, canReview, recommendationLedger, recommendationSummary, userMessages, screenComment, filterVersion, sanitizeRichHtml, plainTextFromRichHtml, imageAsDataUrl } = window.__deps;\n' + source);
   await settle();
   query('[data-action="toggle-profile"]').click();
   assert.ok(query('.auth-dialog'));

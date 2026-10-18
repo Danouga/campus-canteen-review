@@ -1,0 +1,11 @@
+{
+  "version": "message-center-20261018",
+  "files": {
+    "src/app.js": "6ae3085c59709e0bc5d4a8b22d395ed852c403c5820d96749070fc0365415945",
+    "src/styles.css": "41c689914859467bba196a7a474ac8a5fe7bfe7048c4a08e8ab360e94dd0b51b",
+    "src/repository.js": "119098af4db1e5eedddabac2d8dd766b179dfbe714c37a2b86808b956e99fe9e",
+    "src/api-repository.js": "8b85a562242e23ec8abb4118dad0725572d49da79d26c87655c3b2d87e3d21ca",
+    "access.mjs": "abddb6da0e4ec789e121b42d5413c0a19c7cf5d0d8b8756e6003d5c964adb13c",
+    "db.mjs": "5f73e6c8451554d45b4fafd1294f024f2762998d471e019dd76f59a7eeef0223"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "url": "https://shijian-canteen.app.workbuddy.host",
+  "releaseDirectory": "D:\\code\\食堂评价\\.deploy\\release-JMiIY2",
+  "checks": [
+    {
+      "path": "/",
+      "status": 200
+    },
+    {
+      "path": "/api/status",
+      "status": 200,
+      "mode": "file",
+      "connected": true
+    },
+    {
+      "path": "/src/app.js",
+      "status": 200,
+      "sha256": "6ae3085c59709e0bc5d4a8b22d395ed852c403c5820d96749070fc0365415945",
+      "matchesRelease": true
+    },
+    {
+      "path": "/src/styles.css",
+      "status": 200,
+      "sha256": "41c689914859467bba196a7a474ac8a5fe7bfe7048c4a08e8ab360e94dd0b51b",
+      "matchesRelease": true
+    },
+    {
+      "path": "/src/repository.js",
+      "status": 200,
+      "sha256": "119098af4db1e5eedddabac2d8dd766b179dfbe714c37a2b86808b956e99fe9e",
+      "matchesRelease": true
+    },
+    {
+      "path": "/src/api-repository.js",
+      "status": 200,
+      "sha256": "8b85a562242e23ec8abb4118dad0725572d49da79d26c87655c3b2d87e3d21ca",
+      "matchesRelease": true
+    }
+  ],
+  "scope": "Codex independent read-only resource/status checks; no authenticated user interactions or writes performed"
+}

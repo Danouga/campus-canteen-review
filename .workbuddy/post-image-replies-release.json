@@ -1,0 +1,37 @@
+{
+  "version": "post-image-replies-20261018",
+  "manifest": {
+    "applicationId": "wbapp_mkles2WxzoQkUIOuWS1250",
+    "expectedSandboxId": "6c1cfd6082b34593887da1e6ca3e3b2d",
+    "expectedUrl": "https://shijian-canteen.app.workbuddy.host/",
+    "createdAt": "2026-10-18T14:32:12.896Z",
+    "directory": "D:\\code\\食堂评价\\.deploy\\release-HleZTU",
+    "startCommand": "node scripts/deploy-start.mjs",
+    "installCommand": "npm install --omit=dev --ignore-scripts",
+    "files": {
+      "index.html": "1a5d91645d864db1cc41aedf786d7badd15674dd301b659cacade39af2b502b2",
+      "package.json": "76c27cf0e568c42ff67824a33ee935ce09c737a849d980b48747ce35d0ed96c2",
+      ".env.example": "8be281bbf1a89ff36baedb0c747b1c80caa99d01f5a6f270aa0ffc60e2b32285",
+      "server.mjs": "a3a1d1aea499120f56b34c9ff4012634c1b5ea3023ca27e90ea5a5f66dbf55ee",
+      "server-core.mjs": "d0516df98fcd000b5ff8d334182e5813b4bfd08a082bde9285c9dbd3a74dce92",
+      "db.mjs": "33df0c5d27153081568eec7445e2d37428cc820176b8d0dae99e1b624201ab2e",
+      "store.mjs": "310180cf7739ab034b82b3c6f0c0c23c87b874ae108a49eaee8e914860419070",
+      "auth-store.mjs": "e68260fa4f05621cae6fa60548765018cd6a1b7367429791d5a2999436d708ad",
+      "auth.mjs": "3433d67250a8baf21a5461aecb02678cf3764a17219572f5706c6ca7026af706",
+      "passwords.mjs": "35bf410708d8ad5e3c0d7fb94ee2adf88cf9a8a9953826ac707e81bc3d01f7ed",
+      "access.mjs": "abddb6da0e4ec789e121b42d5413c0a19c7cf5d0d8b8756e6003d5c964adb13c",
+      "zip.mjs": "d8199228af8b255f8463d5d3503a28372e0ee29f21608ad6118d698fb4e4094b",
+      "media.mjs": "175ba21b6d7f26eef56720c7260a9a1eb2b17b47f2ebd06f20d8bfbd28f05c3a",
+      "scripts/deploy-start.mjs": "feab53158bb0e6ec81edaadf127dead0812cd1048a26483232ca8a9bac082d99",
+      "src/app.js": "7d72c957742322d0896ba8b3687f48ee1b164d091eb121c55ed522c4cc77511d",
+      "src/styles.css": "41c689914859467bba196a7a474ac8a5fe7bfe7048c4a08e8ab360e94dd0b51b",
+      "src/repository.js": "dba644cb25ea7fe897473d3dd6aecdbe019b5d066525f91b133821ffa1dba645",
+      "src/api-repository.js": "8b85a562242e23ec8abb4118dad0725572d49da79d26c87655c3b2d87e3d21ca",
+      "src/rich-text.js": "a26af5c39e0dfbcec727a3273cf000dd9b6df8c0f5e43d18acf6c7117209be13",
+      "src/image-compression.js": "bda2d4e54efb309c648e48e981544a1fdae16a8ca986e0d31ba8ffeae2c65c5b",
+      "src/content-filter.js": "0a68689f9af18706f3c93d8e3cdaf1e5c1a2caedf4e78bbfbcd936fa42a2bbbf"
+    },
+    "note": "Update existing application only. Existing runtime configuration/data must remain in the reused sandbox. Startup guard refuses empty or incomplete environments."
+  },
+  "migration": "Explicit demo-admin post binding to configured active administrator; preserve legacyOwnerId and old self-reaction semantics; idempotent"
+}

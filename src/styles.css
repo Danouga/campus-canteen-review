@@ -134,6 +134,14 @@ html.modal-open { overflow: hidden; }
 .manage-provisional-copy .review-photo-preview { margin: 10px 0; }
 @media(max-width:600px) { .manage-row:has(.manage-provisional-copy) { flex-wrap: wrap; } .manage-provisional-copy { flex-basis: calc(100% - 90px); } }
 
+.message-categories { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.message-category { flex: 1 1 auto; border: 1px solid #dce5dc; border-radius: 12px; padding: 10px 8px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.message-category.active { background: #e9f0e8; border-color: #a8bca9; color: #45644e; font-weight: 700; }
+.message-category .nav-count { margin-left: 4px; }
+.message-category-description { color: #78857b; font-size: 12px; line-height: 1.7; margin-bottom: 16px; }
+.message-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.message-card h2, .message-card p, .message-context { overflow-wrap: anywhere; }
+.message-card p { white-space: pre-wrap; }
 /* The header needs to contain both rows at tablet/mobile breakpoints. */
 @media(max-width:980px) {
   .site-header { height: auto; }

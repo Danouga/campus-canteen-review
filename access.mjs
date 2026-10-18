@@ -11,7 +11,7 @@ export function bindActor(method, args, user) {
   const result = structuredClone(args);
   if (['submitContribution', 'submitPost', 'saveCanteen', 'saveShop', 'saveDish', 'savePhoto', 'saveCanteenPhoto'].includes(method)) result[0] = { ...result[0], actorId: user.id };
   else {
-    const slots = { reviewContribution: 3, fixProvisional: 1, revokeProvisional: 1, saveCampus: 2, removeEntry: 2, restoreEntry: 2, removeCanteenPhoto: 2, removeShopContent: 3, addComment: 2, setReaction: 2, castRecommendationVote: 1, moderateContent: 3, resolveContested: 2, deleteOwnContent: 2, markReviewMessageRead: 1, markAllReviewMessagesRead: 0, resetPreview: 0 };
+    const slots = { reviewContribution: 3, fixProvisional: 1, revokeProvisional: 1, saveCampus: 2, removeEntry: 2, restoreEntry: 2, removeCanteenPhoto: 2, removeShopContent: 3, addComment: 2, setReaction: 2, castRecommendationVote: 1, moderateContent: 3, resolveContested: 2, deleteOwnContent: 2, markMessageRead: 1, markAllMessagesRead: 0, markReviewMessageRead: 1, markAllReviewMessagesRead: 0, resetPreview: 0 };
     if (!(method in slots)) throw new AuthError('操作无效。');
     result[slots[method]] = user.id;
   }
@@ -24,6 +24,7 @@ export function visibleState(data, user) {
   const counts = new Map();
   for (const vote of data.recommendationVotes || []) if (vote.week === week) counts.set(vote.shopId, (counts.get(vote.shopId) || 0) + 1);
   value.weeklyVoteCounts = [...counts].map(([shopId, count]) => ({ shopId, count }));
+  value.messageReadReceipts = (value.messageReadReceipts || []).filter(entry => entry.ownerId === user?.id);
   value.recommendationVotes = value.recommendationVotes.filter((entry) => entry.actorId === user?.id);
   value.recommendationRewards = value.recommendationRewards.filter((entry) => entry.ownerId === user?.id);
   if (!canReview(user)) {

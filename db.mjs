@@ -11,7 +11,7 @@ const allowedActions = new Set([
   'submitContribution', 'reviewContribution', 'fixProvisional', 'revokeProvisional',
   'expireProvisional', 'saveCampus', 'saveCanteen', 'saveShop', 'removeEntry',
   'restoreEntry', 'saveDish', 'savePhoto', 'saveCanteenPhoto', 'removeCanteenPhoto', 'removeShopContent', 'addComment',
-  'submitPost', 'setReaction', 'castRecommendationVote', 'moderateContent', 'resolveContested', 'deleteOwnContent', 'markReviewMessageRead', 'markAllReviewMessagesRead', 'resetPreview'
+  'submitPost', 'setReaction', 'castRecommendationVote', 'moderateContent', 'resolveContested', 'deleteOwnContent', 'markMessageRead', 'markAllMessagesRead', 'markReviewMessageRead', 'markAllReviewMessagesRead', 'resetPreview'
 ]);
 
 class MemoryStorage {
@@ -62,6 +62,35 @@ async function maybeSeed(store, here) {
   console.log(`已从种子恢复迁移数据：users=${seed.users?.length || 0}, media=${Object.keys(seed.media || {}).length}`);
 }
 
+// Explicit account binding for pre-login demo-admin posts; never infer by nickname.
+export async function migrateLegacyAdministratorPosts(store, email) {
+  if (!email) return 0;
+  const targetEmail = String(email).trim().toLowerCase();
+  const needsMigration = await store.read(data => {
+    const users = data.users.filter(user => String(user.email || '').toLowerCase() === targetEmail && user.role === 'admin' && user.status === 'active');
+    return users.length === 1 && users[0].id !== 'demo-admin' && data.state && JSON.parse(data.state).posts?.some(post => post.ownerId === 'demo-admin');
+  });
+  if (!needsMigration) return 0;
+  return store.transaction(data => {
+    const users = data.users.filter(user => String(user.email || '').toLowerCase() === targetEmail && user.role === 'admin' && user.status === 'active');
+    if (users.length !== 1 || users[0].id === 'demo-admin') return 0;
+    const state = JSON.parse(data.state);
+    const posts = state.posts.filter(post => post.ownerId === 'demo-admin');
+    if (!posts.length) return 0;
+    const migratedIds = new Set(posts.map(post => post.id));
+    for (const post of posts) { post.legacyOwnerId = post.ownerId; post.ownerId = users[0].id; }
+    for (const reaction of state.reactions || []) {
+      if (reaction.actorId === 'demo-admin' && reaction.targetKind === 'post' && migratedIds.has(reaction.targetId)) reaction.actorId = users[0].id;
+    }
+    for (const reward of state.recommendationRewards || []) {
+      if (reward.ownerId === 'demo-admin' && reward.sourceKind === 'post' && migratedIds.has(reward.sourceId)) reward.ownerId = users[0].id;
+    }
+    data.state = JSON.stringify(state);
+    data.revision = (data.revision || 0) + 1;
+    return posts.length;
+  });
+}
+
 export async function connectDatabase(config = {}) {
   const here = dirname(fileURLToPath(import.meta.url));
   const dataDir = config.DATA_DIR ? resolve(config.DATA_DIR) : resolve(here, 'data');
@@ -71,6 +100,7 @@ export async function connectDatabase(config = {}) {
   if (store.data.state == null) {
     await store.transaction(async data => { data.state = JSON.stringify(initialState()); });
   }
+  await migrateLegacyAdministratorPosts(store, config.LEGACY_ADMIN_ACCOUNT_EMAIL);
 
   const authStore = await createAuthStore(store);
 

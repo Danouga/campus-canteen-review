@@ -8,7 +8,7 @@ export const initialState = () => ({
     { id: 'campus-a', name: '校区一', note: '名称待设置' },
     { id: 'campus-b', name: '校区二', note: '名称待设置' }
   ],
-  canteens: [], shops: [], contributions: [], comments: [], posts: [], reactions: [], recommendationVotes: [], recommendationRewards: []
+  canteens: [], shops: [], contributions: [], comments: [], posts: [], reactions: [], recommendationVotes: [], recommendationRewards: [], messageReadReceipts: []
 });
 
 const id = () => globalThis.crypto?.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -91,6 +91,46 @@ export function recommendationSummary(data, actorId, now = new Date()) {
   const baseRemaining = mine.some((vote) => vote.day === day && vote.source === 'base') ? 0 : 1;
   const bonus = recommendationLedger(data, actorId).bonusRemaining;
   return { day, week, baseRemaining, bonus, available: baseRemaining + bonus, votesToday: mine.filter((vote) => vote.day === day), weeklyVotes: votes.filter((vote) => vote.week === week) };
+}
+
+// Message IDs are derived from durable business records; old data needs no migration.
+export function userMessages(data, actorId) {
+  if (!actorId) return [];
+  const receipts = new Set((data.messageReadReceipts || []).filter(item => item.ownerId === actorId).map(item => item.messageId));
+  const ledger = recommendationLedger(data, actorId);
+  const rewardLabel = reward => {
+    if (!reward) return '历史额外票（来源未关联）';
+    const collection = reward.sourceKind === 'comment' ? data.comments : reward.sourceKind === 'post' ? data.posts : data.contributions;
+    const item = collection.find(entry => entry.id === reward.sourceId);
+    return `${{ comment: '评论获赞', post: '美食贴获赞', contribution: '共建固定' }[reward.sourceKind] || '额外票奖励'} · ${(item?.title || item?.body || '原内容已移除').slice(0, 80)}`;
+  };
+  const messages = ledger.rewards.map(reward => ({
+    id: `reward:${reward.key}`, category: 'system', title: '获得额外推荐票 +1 张',
+    body: `${rewardLabel(reward)}。${reward.used ? '该票已使用。' : '额外票可以保留。'}`,
+    createdAt: reward.createdAt, unread: true
+  }));
+  for (const vote of ledger.votes) {
+    const reward = ledger.rewards.find(item => item.key === vote.appliedRewardKey);
+    const shop = data.shops.find(item => item.id === vote.shopId);
+    messages.push({ id: `vote:${vote.id}`, category: 'system', title: `推荐票已投给 ${shop?.name || '已下架店铺'}`,
+      body: `消耗 1 张${vote.source === 'base' ? '每日基础票' : '额外票'}${vote.source === 'base' ? '' : `，来源：${rewardLabel(reward)}`}${vote.sourceInferred ? '（旧记录来源为推定）' : ''}；获得 1 积分。`, createdAt: vote.createdAt, unread: true });
+  }
+  const labels = { pending: '等待审核', provisional: '暂示中', fixed: '已固定收录', contested: '固定资料待复核', revoked: '已撤销收录', rejected: '未通过', expired: '暂示已结束' };
+  for (const item of data.contributions.filter(item => item.ownerId === actorId)) {
+    messages.push({ id: `review:${item.id}:${item.status}:${item.reviewedAt || item.submittedAt || ''}`, category: 'applications',
+      title: item.title, label: labels[item.status] || item.status,
+      body: item.status === 'pending' ? '申请已送达管理员工作台。' : item.reviewNote || '管理员已处理这条申请。',
+      createdAt: item.reviewedAt || item.submittedAt, unread: item.status !== 'pending' && !item.notificationReadAt, contributionId: item.id });
+  }
+  const posts = new Map(data.posts.filter(item => item.ownerId === actorId && item.status === 'active').map(item => [item.id, item]));
+  for (const comment of data.comments) {
+    const post = comment.targetKind === 'post' && posts.get(comment.targetId);
+    if (!post || comment.ownerId === actorId || post.legacyOwnerId && comment.ownerId === post.legacyOwnerId || comment.status !== 'active') continue;
+    messages.push({ id: `reply:${comment.id}`, category: 'replies', title: `${data.publicUserNames?.[comment.ownerId] || comment.author || '用户'} 评论了你的帖子`,
+      body: comment.body, context: post.title, postId: post.id, createdAt: comment.createdAt, unread: true });
+  }
+  return messages.map(item => ({ ...item, unread: item.unread && !receipts.has(item.id) }))
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || a.id.localeCompare(b.id));
 }
 function tagId(shopId, name) { return `${shopId}:tag:${encodeURIComponent(name)}`; }
 function syncTagRecords(shop, ownerId = null) {
@@ -294,6 +334,33 @@ export class LocalRepository {
       for (const item of unread) item.notificationReadAt = readAt;
       write(data, this.storage);
     }
+    return unread.length;
+  }
+
+  async markMessageRead(messageId, actorId) {
+    requireActor(actorId, this.trustedActor);
+    const data = read(this.storage);
+    const message = userMessages(data, actorId).find(item => item.id === messageId);
+    if (!message) throw new Error('消息不存在或无权访问。');
+    if (!message.unread) return;
+    const readAt = new Date().toISOString();
+    if (message.contributionId) data.contributions.find(item => item.id === message.contributionId).notificationReadAt = readAt;
+    else { data.messageReadReceipts ||= []; data.messageReadReceipts.push({ messageId, ownerId: actorId, readAt }); }
+    write(data, this.storage);
+  }
+
+  async markAllMessagesRead(actorId) {
+    requireActor(actorId, this.trustedActor);
+    const data = read(this.storage);
+    const unread = userMessages(data, actorId).filter(item => item.unread);
+    if (!unread.length) return 0;
+    const readAt = new Date().toISOString();
+    data.messageReadReceipts ||= [];
+    for (const message of unread) {
+      if (message.contributionId) data.contributions.find(item => item.id === message.contributionId).notificationReadAt = readAt;
+      else data.messageReadReceipts.push({ messageId: message.id, ownerId: actorId, readAt });
+    }
+    write(data, this.storage);
     return unread.length;
   }
 
